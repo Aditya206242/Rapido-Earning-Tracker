@@ -96,3 +96,20 @@ export interface DailyBreakdownPoint {
   expenses: number
   profit: number
 }
+
+/** A single day's combined earning total, used for best-day/average calculations. */
+export interface EarningDay {
+  date: string
+  amount: number
+}
+
+/** Earnings-only performance stats for a period (all time / this week / this month). */
+export interface BestDayStats {
+  /** Highest-earning day in the period, or null if there are no earnings. Ties resolve to the most recent date. */
+  bestDay: EarningDay | null
+  /** Total earnings ÷ number of unique days with at least one earning. Null if there are no earnings. */
+  averageDailyEarning: number | null
+  /** Number of unique calendar dates with at least one earning in the period. */
+  activeDays: number
+  totalEarnings: number
+}

@@ -1,6 +1,8 @@
 import type {
+  BestDayStats,
   DailyBreakdownPoint,
   Earning,
+  EarningDay,
   Expense,
   FinancialSummary,
   PetrolEntry,
@@ -136,4 +138,58 @@ export function buildTransactionList(
     if (a.date !== b.date) return a.date < b.date ? 1 : -1
     return 0
   })
+}
+
+/** Keeps only earnings whose date falls within [start, end] inclusive (YYYY-MM-DD comparison). */
+export function filterEarningsByRange(earnings: Earning[], start: string, end: string): Earning[] {
+  return earnings.filter((e) => e.date >= start && e.date <= end)
+}
+
+/** Sums earnings onto each date they fall on — multiple entries on one date combine into a single total. */
+export function groupEarningsByDate(earnings: Earning[]): Map<string, number> {
+  const byDate = new Map<string, number>()
+  for (const e of earnings) {
+    byDate.set(e.date, (byDate.get(e.date) ?? 0) + e.amount)
+  }
+  return byDate
+}
+
+/**
+ * The single highest-earning day (same-date entries combined first).
+ * Ties resolve to the most recent date. Null when there are no earnings.
+ */
+export function findBestEarningDay(earnings: Earning[]): EarningDay | null {
+  const byDate = groupEarningsByDate(earnings)
+  let best: EarningDay | null = null
+  for (const [date, amount] of byDate) {
+    if (!best || amount > best.amount || (amount === best.amount && date > best.date)) {
+      best = { date, amount }
+    }
+  }
+  return best
+}
+
+/**
+ * Total earnings ÷ number of unique days that have at least one earning —
+ * never divides by calendar days. Null when there are no earnings.
+ */
+export function calculateAverageDailyEarning(earnings: Earning[]): number | null {
+  const byDate = groupEarningsByDate(earnings)
+  if (byDate.size === 0) return null
+  const total = Array.from(byDate.values()).reduce((sum, amount) => sum + amount, 0)
+  return total / byDate.size
+}
+
+/** Combines best-day and average-daily-earning stats for one period (all time / this week / this month). */
+export function buildBestDayStats(earnings: Earning[]): BestDayStats {
+  const byDate = groupEarningsByDate(earnings)
+  const activeDays = byDate.size
+  const totalEarnings = Array.from(byDate.values()).reduce((sum, amount) => sum + amount, 0)
+
+  return {
+    bestDay: findBestEarningDay(earnings),
+    averageDailyEarning: activeDays === 0 ? null : totalEarnings / activeDays,
+    activeDays,
+    totalEarnings,
+  }
 }
