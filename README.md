@@ -1,8 +1,9 @@
-# Rapido Profit Tracker
+# ProfitGo
 
-A simple, mobile-first financial tracker for Rapido drivers. Tracks earnings, petrol
-expenses, and other expenses — and nothing else. No kilometres, ride counts, driving
-time, or ride duration anywhere in the app, by design.
+Your Daily Earnings & Expense Tracker — a simple, mobile-first financial tracker for
+Rapido drivers. Tracks earnings, petrol expenses, and other expenses — and nothing
+else. No kilometres, ride counts, driving time, or ride duration anywhere in the app,
+by design.
 
 ## Tech Stack
 

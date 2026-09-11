@@ -51,7 +51,7 @@ export function generateReportPdf({
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(20)
   doc.setTextColor(INK)
-  doc.text('RAPIDO PROFIT REPORT', margin, y)
+  doc.text('PROFITGO REPORT', margin, y)
   y += 26
 
   doc.setFont('helvetica', 'normal')
@@ -160,5 +160,5 @@ export function generateReportPdf({
 
 export function downloadReportPdf(input: GenerateReportPdfInput) {
   const doc = generateReportPdf(input)
-  doc.save(`Rapido-Profit-Report-${input.startDate}-to-${input.endDate}.pdf`)
+  doc.save(`ProfitGo-Report-${input.startDate}-to-${input.endDate}.pdf`)
 }

@@ -29,7 +29,7 @@ export function Login() {
   }
 
   return (
-    <AuthLayout title="Rapido Profit Tracker" subtitle="Log in to track your earnings">
+    <AuthLayout title="ProfitGo" subtitle="Log in to track your earnings">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
           label="Email"

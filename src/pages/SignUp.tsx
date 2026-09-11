@@ -45,7 +45,7 @@ export function SignUp() {
   }
 
   return (
-    <AuthLayout title="Create Account" subtitle="Start tracking your Rapido profit">
+    <AuthLayout title="Create Account" subtitle="Start tracking your profit with ProfitGo">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
           label="Email"

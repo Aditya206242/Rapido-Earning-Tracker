@@ -1,5 +1,5 @@
 /**
- * Core domain types for Rapido Profit Tracker.
+ * Core domain types for ProfitGo.
  * Intentionally excludes any ride/distance/time metrics — this app tracks
  * money only (earnings, petrol, other expenses).
  */
