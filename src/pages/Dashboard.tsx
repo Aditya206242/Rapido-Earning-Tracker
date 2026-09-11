@@ -53,7 +53,7 @@ export function Dashboard() {
         <h1 className="text-2xl font-bold text-slate-900">
           {timeOfDayGreeting()}, {displayName}
         </h1>
-        <p className="mt-1 text-sm text-slate-500">Your earnings, expenses & profit at a glance</p>
+        <p className="mt-1 text-sm text-slate-500">Track your money, know your profit</p>
       </div>
 
       <ProfitStatusBanner netProfit={monthSummary.netProfit} status={monthSummary.status} periodLabel="This Month" />
