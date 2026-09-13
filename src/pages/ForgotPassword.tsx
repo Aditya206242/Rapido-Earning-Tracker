@@ -4,6 +4,7 @@ import { AuthLayout } from '@/layouts/AuthLayout'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { sendPasswordResetEmail } from '@/services/auth.service'
+import { getAuthErrorMessage } from '@/utils/authErrors'
 
 export function ForgotPassword() {
   const [email, setEmail] = useState('')
@@ -19,7 +20,7 @@ export function ForgotPassword() {
       await sendPasswordResetEmail(email)
       setSent(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send reset email')
+      setError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }

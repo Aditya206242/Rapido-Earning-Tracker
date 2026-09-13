@@ -3,8 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { Input } from '@/components/ui/Input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Button } from '@/components/ui/Button'
 import { signIn } from '@/services/auth.service'
+import { getAuthErrorMessage } from '@/utils/authErrors'
 
 export function Login() {
   const navigate = useNavigate()
@@ -22,7 +24,7 @@ export function Login() {
       toast.success('Welcome back!')
       navigate('/dashboard', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign in')
+      setError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -39,9 +41,8 @@ export function Login() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <Input
+        <PasswordInput
           label="Password"
-          type="password"
           autoComplete="current-password"
           required
           value={password}

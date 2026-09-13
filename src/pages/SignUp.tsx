@@ -3,8 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { Input } from '@/components/ui/Input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Button } from '@/components/ui/Button'
 import { signUp } from '@/services/auth.service'
+import { getAuthErrorMessage } from '@/utils/authErrors'
 
 export function SignUp() {
   const navigate = useNavigate()
@@ -38,7 +40,7 @@ export function SignUp() {
         navigate('/login', { replace: true })
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create account')
+      setError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -55,18 +57,16 @@ export function SignUp() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <Input
+        <PasswordInput
           label="Password"
-          type="password"
           autoComplete="new-password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           hint="At least 6 characters"
         />
-        <Input
+        <PasswordInput
           label="Confirm Password"
-          type="password"
           autoComplete="new-password"
           required
           value={confirmPassword}

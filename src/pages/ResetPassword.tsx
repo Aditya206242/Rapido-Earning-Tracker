@@ -2,9 +2,10 @@ import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { AuthLayout } from '@/layouts/AuthLayout'
-import { Input } from '@/components/ui/Input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { Button } from '@/components/ui/Button'
 import { updatePassword } from '@/services/auth.service'
+import { getAuthErrorMessage } from '@/utils/authErrors'
 
 /** Landed on via the password reset email link (Supabase attaches a recovery session). */
 export function ResetPassword() {
@@ -33,7 +34,7 @@ export function ResetPassword() {
       toast.success('Password updated. Please log in again.')
       navigate('/login', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update password')
+      setError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -42,17 +43,15 @@ export function ResetPassword() {
   return (
     <AuthLayout title="Set New Password" subtitle="Choose a new password for your account">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Input
+        <PasswordInput
           label="New Password"
-          type="password"
           autoComplete="new-password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <Input
+        <PasswordInput
           label="Confirm New Password"
-          type="password"
           autoComplete="new-password"
           required
           value={confirmPassword}
