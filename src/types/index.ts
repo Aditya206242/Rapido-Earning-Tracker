@@ -59,6 +59,24 @@ export interface Profile {
   upi_id: string | null
   qr_image_url: string | null
   avatar_url: string | null
+  /** Whether the user wants the daily 10 PM "add today's earnings" push reminder. */
+  daily_reminder_enabled: boolean
+  /** IANA timezone (e.g. "Asia/Kolkata") the daily reminder is scheduled against. Defaults server-side to Asia/Kolkata. */
+  timezone: string
+  /** Local date (YYYY-MM-DD, in `timezone`) the reminder was last sent — prevents duplicate sends on the same day. */
+  last_reminder_sent_date: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** One browser/device's Web Push subscription, owned by exactly one user. */
+export interface PushSubscriptionRow {
+  id: string
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth_key: string
+  user_agent: string | null
   created_at: string
   updated_at: string
 }

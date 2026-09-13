@@ -7,6 +7,8 @@ export interface ProfileInput {
   upi_id?: string | null
   qr_image_url?: string | null
   avatar_url?: string | null
+  daily_reminder_enabled?: boolean
+  timezone?: string
 }
 
 export async function fetchProfile(userId: string): Promise<Profile | null> {

@@ -1,0 +1,5719 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+public/
+  icons/
+    icon-192.png
+    icon-512.png
+    maskable-192.png
+    maskable-512.png
+  apple-touch-icon.png
+  favicon-32.png
+  favicon.svg
+  push-sw.js
+src/
+  components/
+    auth/
+      ProtectedRoute.tsx
+    dashboard/
+      BestDayCard.tsx
+      ChartCard.tsx
+      chartUtils.ts
+      DailyEarningsChart.tsx
+      DailyPetrolChart.tsx
+      DailyProfitChart.tsx
+      EarningsVsExpensesChart.tsx
+      ProfitStatusBanner.tsx
+      StatCard.tsx
+    forms/
+      AddEarningForm.tsx
+      AddExpenseForm.tsx
+      AddPetrolForm.tsx
+    navigation/
+      BottomNav.tsx
+      navItems.ts
+      Sidebar.tsx
+    profile/
+      ImageUploadField.tsx
+      NotificationSettings.tsx
+      ProfileForm.tsx
+      QRDisplay.tsx
+    reports/
+      DateRangeSelector.tsx
+      GetBillButton.tsx
+      ReportSummary.tsx
+    transactions/
+      TransactionFilters.tsx
+      TransactionItem.tsx
+      TransactionList.tsx
+    ui/
+      Button.tsx
+      Card.tsx
+      ConfirmDialog.tsx
+      EmptyState.tsx
+      ErrorState.tsx
+      Input.tsx
+      LoadingSpinner.tsx
+      Select.tsx
+      Sheet.tsx
+      Switch.tsx
+  context/
+    AuthContext.tsx
+  hooks/
+    useFinancialData.ts
+    useProfile.ts
+    usePushNotifications.ts
+  layouts/
+    AppLayout.tsx
+    AuthLayout.tsx
+  lib/
+    pdf/
+      generateReportPdf.ts
+    supabase.ts
+  pages/
+    Add.tsx
+    Dashboard.tsx
+    ForgotPassword.tsx
+    History.tsx
+    Login.tsx
+    Profile.tsx
+    Reports.tsx
+    ResetPassword.tsx
+    SetupRequired.tsx
+    SignUp.tsx
+  services/
+    auth.service.ts
+    earnings.service.ts
+    expenses.service.ts
+    petrol.service.ts
+    profile.service.ts
+    push.service.test.ts
+    push.service.ts
+  types/
+    index.ts
+  utils/
+    calculations.test.ts
+    calculations.ts
+    currency.ts
+    date.ts
+    validation.ts
+  App.tsx
+  index.css
+  main.tsx
+supabase/
+  functions/
+    _shared/
+      reminder-schedule.test.ts
+      reminder-schedule.ts
+    send-daily-reminders/
+      index.ts
+  cron-setup.sql
+  schema.sql
+  seed.sql
+.env.example
+.gitignore
+.oxlintrc.json
+index.html
+package.json
+postcss.config.js
+README.md
+tailwind.config.js
+tsconfig.app.json
+tsconfig.json
+tsconfig.node.json
+vercel.json
+vite.config.ts
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="public/push-sw.js">
+// Custom push-notification handling, imported into the Workbox-generated
+// service worker via `workbox.importScripts` in vite.config.ts. Kept as a
+// separate plain file so it survives every `vite-plugin-pwa` rebuild of
+// sw.js untouched — the generated file's precaching/update logic is not
+// modified by this.
+
+self.addEventListener('push', (event) => {
+  let payload = { title: 'ProfitGo Reminder 💰', body: "Add today's earnings & expenses", url: '/dashboard' }
+  if (event.data) {
+    try {
+      payload = { ...payload, ...event.data.json() }
+    } catch {
+      payload.body = event.data.text() || payload.body
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: payload.url || '/dashboard' },
+    }),
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const targetUrl = event.notification.data?.url || '/dashboard'
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          return client.navigate(targetUrl).then(() => client.focus())
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl)
+      }
+    }),
+  )
+})
+</file>
+
+<file path="src/components/profile/NotificationSettings.tsx">
+import { useState } from 'react'
+import { Bell, BellOff, Smartphone } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { Card } from '@/components/ui/Card'
+import { Switch } from '@/components/ui/Switch'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
+import type { Profile } from '@/types'
+
+interface NotificationSettingsProps {
+  profile: Profile | null
+  onChange: () => Promise<void>
+}
+
+export function NotificationSettings({ profile, onChange }: NotificationSettingsProps) {
+  const reminderEnabledOnProfile = profile?.daily_reminder_enabled ?? false
+  const { supportStatus, permission, loading, enabled, enableReminder, disableReminder } =
+    usePushNotifications(reminderEnabledOnProfile)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  async function handleToggle(next: boolean) {
+    setActionError(null)
+    try {
+      if (next) {
+        await enableReminder()
+        // enableReminder only turns the reminder on if permission ends up granted —
+        // check the live browser state rather than assuming success.
+        if (Notification.permission === 'granted') {
+          toast.success('Daily reminder turned on')
+        } else if (Notification.permission === 'denied') {
+          toast.error('Notifications are blocked for this site')
+        }
+      } else {
+        await disableReminder()
+        toast.success('Daily reminder turned off')
+      }
+      await onChange()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Something went wrong')
+      toast.error('Failed to update notification setting')
+    }
+  }
+
+  const statusMessage = (() => {
+    if (supportStatus === 'unsupported') return "Notifications aren't supported in this browser."
+    if (supportStatus === 'needs-ios-install') {
+      return 'Install ProfitGo to your Home Screen (Share → Add to Home Screen) to enable notifications.'
+    }
+    if (permission === 'denied') {
+      return 'Notifications are blocked for ProfitGo. Enable them in your browser/site settings to turn this on.'
+    }
+    if (actionError) return actionError
+    return null
+  })()
+
+  const toggleDisabled = supportStatus !== 'ready' || permission === 'denied' || loading
+
+  return (
+    <Card className="p-5">
+      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Notifications</h2>
+      <div className="flex items-center gap-3">
+        <span
+          className={
+            enabled
+              ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600'
+              : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400'
+          }
+        >
+          {enabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+        </span>
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-slate-900">Daily Reminder</p>
+          <p className="text-xs text-slate-500">Get a 10 PM nudge to log today's earnings</p>
+        </div>
+        <Switch checked={enabled} onChange={handleToggle} disabled={toggleDisabled} loading={loading} label="Daily Reminder" />
+      </div>
+
+      {statusMessage && (
+        <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
+          <Smartphone className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {statusMessage}
+        </p>
+      )}
+    </Card>
+  )
+}
+</file>
+
+<file path="src/components/ui/Switch.tsx">
+import clsx from 'clsx'
+import { Loader2 } from 'lucide-react'
+
+interface SwitchProps {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+  loading?: boolean
+  label?: string
+}
+
+/** A large, touch-friendly ON/OFF toggle — used for settings like the daily reminder. */
+export function Switch({ checked, onChange, disabled, loading, label }: SwitchProps) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled || loading}
+      onClick={() => onChange(!checked)}
+      className={clsx(
+        'relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors duration-150',
+        'disabled:cursor-not-allowed disabled:opacity-60',
+        checked ? 'bg-brand-600' : 'bg-slate-300',
+      )}
+    >
+      <span
+        className={clsx(
+          'inline-flex h-6 w-6 items-center justify-center rounded-full bg-white shadow transition-transform duration-150',
+          checked ? 'translate-x-7' : 'translate-x-1',
+        )}
+      >
+        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+      </span>
+    </button>
+  )
+}
+</file>
+
+<file path="src/hooks/usePushNotifications.ts">
+import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/context/AuthContext'
+import {
+  detectTimezone,
+  getNotificationPermission,
+  getPushSupportStatus,
+  subscribeToPush,
+  unsubscribeFromPush,
+  type PushSupportStatus,
+} from '@/services/push.service'
+import { upsertProfile } from '@/services/profile.service'
+
+export interface UsePushNotificationsResult {
+  supportStatus: PushSupportStatus
+  permission: NotificationPermission | 'unsupported'
+  /** Whether this call is in flight — disable the toggle while true. */
+  loading: boolean
+  /** True once the user has enabled the reminder AND granted permission on this device. */
+  enabled: boolean
+  /** Requests permission (if needed), subscribes this device, and turns the reminder on. */
+  enableReminder: () => Promise<void>
+  /** Turns the reminder off and removes this device's subscription. */
+  disableReminder: () => Promise<void>
+}
+
+/**
+ * Bridges the browser's Push API with the user's `daily_reminder_enabled`
+ * profile flag. The actual 10 PM send happens server-side (Supabase Edge
+ * Function on a cron schedule) — this hook only manages permission,
+ * subscribing this device, and keeping the profile flag in sync.
+ */
+export function usePushNotifications(reminderEnabledOnProfile: boolean): UsePushNotificationsResult {
+  const { user } = useAuth()
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default')
+  const [loading, setLoading] = useState(false)
+
+  const supportStatus = getPushSupportStatus()
+
+  useEffect(() => {
+    setPermission(getNotificationPermission())
+  }, [])
+
+  const enableReminder = useCallback(async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const result = await subscribeToPush(user.id)
+      setPermission(result)
+      if (result === 'granted') {
+        await upsertProfile(user.id, { daily_reminder_enabled: true, timezone: detectTimezone() })
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  const disableReminder = useCallback(async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      await unsubscribeFromPush(user.id)
+      await upsertProfile(user.id, { daily_reminder_enabled: false })
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  return {
+    supportStatus,
+    permission,
+    loading,
+    enabled: reminderEnabledOnProfile && permission === 'granted',
+    enableReminder,
+    disableReminder,
+  }
+}
+</file>
+
+<file path="src/services/push.service.test.ts">
+import { describe, expect, it } from 'vitest'
+import { getNotificationPermission, getPushSupportStatus, urlBase64ToUint8Array } from './push.service'
+
+describe('urlBase64ToUint8Array', () => {
+  it('decodes a real VAPID public key into a 65-byte uncompressed P-256 point', () => {
+    // A real key generated with `npx web-push generate-vapid-keys` for this project.
+    const key = 'BCnrwlYZhygExxVfLpEviLewvaLmStiD29hkRZS1Poc42aQbqOYxmZ3BhODIOUpkrcc_nrMrfi4jCvFDdgKm1KY'
+    const bytes = urlBase64ToUint8Array(key)
+    expect(bytes).toBeInstanceOf(Uint8Array)
+    expect(bytes.length).toBe(65)
+    expect(bytes[0]).toBe(4) // uncompressed EC point prefix
+  })
+
+  it('handles base64url characters (- and _) that regular atob cannot decode directly', () => {
+    // Deliberately pick a key containing both '-' and '_' to prove the substitution runs.
+    const key = 'BCnrwlYZhygExxVfLpEviLewvaLmStiD29hkRZS1Poc42aQbqOYxmZ3BhODIOUpkrcc_nrMrfi4jCvFDdgKm1KY'
+    expect(key).toContain('_')
+    expect(() => urlBase64ToUint8Array(key)).not.toThrow()
+  })
+
+  it('pads strings whose length is not a multiple of 4', () => {
+    // 87 chars -> needs 1 char of "=" padding to reach a multiple of 4.
+    const key = 'BCnrwlYZhygExxVfLpEviLewvaLmStiD29hkRZS1Poc42aQbqOYxmZ3BhODIOUpkrcc_nrMrfi4jCvFDdgKm1K'
+    expect(key.length % 4).not.toBe(0)
+    expect(() => urlBase64ToUint8Array(key)).not.toThrow()
+  })
+})
+
+describe('getPushSupportStatus', () => {
+  it('reports unsupported when there is no window (e.g. this Node test environment)', () => {
+    // Vitest's default environment has no DOM globals — this genuinely exercises
+    // the real "unsupported platform" branch rather than a mocked one.
+    expect(getPushSupportStatus()).toBe('unsupported')
+  })
+})
+
+describe('getNotificationPermission', () => {
+  it('reports unsupported when the Notification API does not exist', () => {
+    expect(getNotificationPermission()).toBe('unsupported')
+  })
+})
+</file>
+
+<file path="src/services/push.service.ts">
+import { supabase } from '@/lib/supabase'
+
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
+
+export type PushSupportStatus =
+  | 'ready' // Push API + service workers available, safe to request permission
+  | 'unsupported' // this browser/OS has no Push API at all
+  | 'needs-ios-install' // iOS Safari supports push, but only once added to the Home Screen
+
+/** Detects whether this browser can receive Web Push at all, before we ever prompt for permission. */
+export function getPushSupportStatus(): PushSupportStatus {
+  if (typeof window === 'undefined') return 'unsupported'
+
+  const hasApis = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+  if (!hasApis) {
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (navigator as any).standalone === true
+    if (isIOS && !isStandalone) return 'needs-ios-install'
+    return 'unsupported'
+  }
+  return 'ready'
+}
+
+/** Current browser permission state — 'default' means the user hasn't been asked yet. */
+export function getNotificationPermission(): NotificationPermission | 'unsupported' {
+  if (typeof Notification === 'undefined') return 'unsupported'
+  return Notification.permission
+}
+
+/** Converts a VAPID public key from base64url (as generated by `web-push`) to the raw bytes the Push API expects. */
+export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  const bytes = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; i++) {
+    bytes[i] = rawData.charCodeAt(i)
+  }
+  return bytes
+}
+
+/**
+ * Requests permission (if not already decided), subscribes this device to
+ * push, and saves the subscription against the authenticated user. Safe to
+ * call again on a device that's already subscribed (upserts by endpoint).
+ */
+export async function subscribeToPush(userId: string): Promise<NotificationPermission> {
+  if (!VAPID_PUBLIC_KEY) {
+    throw new Error('Push notifications are not configured (missing VITE_VAPID_PUBLIC_KEY).')
+  }
+
+  let permission = Notification.permission
+  if (permission === 'default') {
+    permission = await Notification.requestPermission()
+  }
+  if (permission !== 'granted') {
+    return permission
+  }
+
+  const registration = await navigator.serviceWorker.ready
+  let subscription = await registration.pushManager.getSubscription()
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    })
+  }
+
+  const json = subscription.toJSON()
+  if (!json.keys?.p256dh || !json.keys?.auth) {
+    throw new Error('Push subscription is missing encryption keys.')
+  }
+
+  const { error } = await supabase.from('push_subscriptions').upsert(
+    {
+      user_id: userId,
+      endpoint: subscription.endpoint,
+      p256dh: json.keys.p256dh,
+      auth_key: json.keys.auth,
+      user_agent: navigator.userAgent,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,endpoint' },
+  )
+  if (error) throw error
+
+  return permission
+}
+
+/** Removes this device's push subscription both from the browser and from Supabase. */
+export async function unsubscribeFromPush(userId: string): Promise<void> {
+  if (!('serviceWorker' in navigator)) return
+
+  const registration = await navigator.serviceWorker.getRegistration()
+  const subscription = await registration?.pushManager.getSubscription()
+  if (!subscription) return
+
+  const endpoint = subscription.endpoint
+  await subscription.unsubscribe()
+
+  const { error } = await supabase
+    .from('push_subscriptions')
+    .delete()
+    .eq('user_id', userId)
+    .eq('endpoint', endpoint)
+  if (error) throw error
+}
+
+/** The browser's own IANA timezone, e.g. "Asia/Kolkata" — used to schedule this user's 10 PM reminder. */
+export function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata'
+  } catch {
+    return 'Asia/Kolkata'
+  }
+}
+</file>
+
+<file path="supabase/functions/_shared/reminder-schedule.test.ts">
+import { describe, expect, it } from 'vitest'
+import { getLocalDateAndHour, isProfileDueForReminder } from './reminder-schedule'
+
+describe('getLocalDateAndHour', () => {
+  it('computes 10 PM IST correctly from a UTC instant (IST is UTC+5:30)', () => {
+    // 16:30 UTC + 5:30 = 22:00 IST, same calendar day
+    const { localDate, localHour } = getLocalDateAndHour('Asia/Kolkata', new Date('2026-09-11T16:30:00Z'))
+    expect(localHour).toBe(22)
+    expect(localDate).toBe('2026-09-11')
+  })
+
+  it('rolls over to the next calendar day when the timezone offset pushes past midnight', () => {
+    // 22:00 UTC + 5:30 = 03:30 the next day in IST
+    const { localDate, localHour } = getLocalDateAndHour('Asia/Kolkata', new Date('2026-09-11T22:00:00Z'))
+    expect(localHour).toBe(3)
+    expect(localDate).toBe('2026-09-12')
+  })
+
+  it('the same UTC instant resolves to different local times in different timezones', () => {
+    const now = new Date('2026-09-11T22:00:00Z')
+    const utc = getLocalDateAndHour('UTC', now)
+    const ist = getLocalDateAndHour('Asia/Kolkata', now)
+    expect(utc.localHour).toBe(22)
+    expect(ist.localHour).toBe(3)
+  })
+})
+
+describe('isProfileDueForReminder', () => {
+  const REMINDER_HOUR = 22
+  const tenPmInKolkataUtc = new Date('2026-09-11T16:30:00Z') // = 22:00 Asia/Kolkata
+
+  it('is due when local time is the reminder hour and nothing was sent today', () => {
+    const due = isProfileDueForReminder(
+      { timezone: 'Asia/Kolkata', last_reminder_sent_date: null },
+      tenPmInKolkataUtc,
+      REMINDER_HOUR,
+    )
+    expect(due).toBe(true)
+  })
+
+  it('is NOT due when local time is not the reminder hour', () => {
+    const notYet = new Date('2026-09-11T10:00:00Z') // ~15:30 IST
+    const due = isProfileDueForReminder(
+      { timezone: 'Asia/Kolkata', last_reminder_sent_date: null },
+      notYet,
+      REMINDER_HOUR,
+    )
+    expect(due).toBe(false)
+  })
+
+  it('is NOT due again once already sent for that local date (prevents duplicates within the 10 PM hour)', () => {
+    const due = isProfileDueForReminder(
+      { timezone: 'Asia/Kolkata', last_reminder_sent_date: '2026-09-11' },
+      tenPmInKolkataUtc,
+      REMINDER_HOUR,
+    )
+    expect(due).toBe(false)
+  })
+
+  it('is due again on a new local day even if last_reminder_sent_date is set to a previous date', () => {
+    const due = isProfileDueForReminder(
+      { timezone: 'Asia/Kolkata', last_reminder_sent_date: '2026-09-10' },
+      tenPmInKolkataUtc, // local date is 2026-09-11
+      REMINDER_HOUR,
+    )
+    expect(due).toBe(true)
+  })
+
+  it('defaults to Asia/Kolkata when timezone is empty', () => {
+    const due = isProfileDueForReminder({ timezone: '', last_reminder_sent_date: null }, tenPmInKolkataUtc, REMINDER_HOUR)
+    expect(due).toBe(true)
+  })
+
+  it('evaluates two users in different timezones independently at the same instant', () => {
+    const now = new Date('2026-09-11T22:00:00Z') // 22:00 UTC == 03:30 next day IST
+    const utcUser = isProfileDueForReminder({ timezone: 'UTC', last_reminder_sent_date: null }, now, REMINDER_HOUR)
+    const istUser = isProfileDueForReminder({ timezone: 'Asia/Kolkata', last_reminder_sent_date: null }, now, REMINDER_HOUR)
+    expect(utcUser).toBe(true) // it's 22:00 in UTC
+    expect(istUser).toBe(false) // it's 03:30 in IST, not their 10 PM yet
+  })
+})
+</file>
+
+<file path="supabase/functions/_shared/reminder-schedule.ts">
+/**
+ * Pure scheduling logic shared between the send-daily-reminders Edge Function
+ * and its unit tests. Uses only standard Intl/Date APIs (no Deno-specific or
+ * Node-specific globals), so this exact file runs correctly under both the
+ * Deno Edge Runtime and Vitest — one source of truth, not a duplicated copy.
+ */
+
+export interface ReminderProfile {
+  timezone: string
+  last_reminder_sent_date: string | null
+}
+
+export interface LocalDateAndHour {
+  localDate: string
+  localHour: number
+}
+
+/** The current local date (YYYY-MM-DD) and hour (0-23) in the given IANA timezone. */
+export function getLocalDateAndHour(timezone: string, now: Date): LocalDateAndHour {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: 'numeric',
+    hour12: false,
+  }).formatToParts(now)
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ''
+  const localDate = `${get('year')}-${get('month')}-${get('day')}`
+  // Intl can format midnight as "24" instead of "0" depending on the runtime — normalize.
+  const localHour = Number(get('hour')) % 24
+
+  return { localDate, localHour }
+}
+
+/**
+ * Whether this profile should be sent today's reminder right now: their
+ * local time is currently the reminder hour, and they haven't already been
+ * sent one today (compared in their own timezone, not the server's).
+ */
+export function isProfileDueForReminder(profile: ReminderProfile, now: Date, reminderHour: number): boolean {
+  const { localDate, localHour } = getLocalDateAndHour(profile.timezone || 'Asia/Kolkata', now)
+  return localHour === reminderHour && profile.last_reminder_sent_date !== localDate
+}
+</file>
+
+<file path="supabase/functions/send-daily-reminders/index.ts">
+// Supabase Edge Function: send-daily-reminders
+//
+// Triggered on a schedule (every ~15 minutes) by a pg_cron job — see
+// ../../cron-setup.sql. On each run it finds every user whose local time is
+// currently 10 PM in their own timezone, whose daily reminder is enabled,
+// and who hasn't already been sent today's reminder — then sends a Web Push
+// notification to every device (push_subscriptions row) they've registered.
+//
+// Required secrets (set via `supabase secrets set ...`, never in frontend code):
+//   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (e.g. "mailto:you@example.com")
+// SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided automatically by the
+// Supabase Edge Runtime for every function — do not set them manually.
+
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import webpush from 'npm:web-push@3.6.7'
+import { getLocalDateAndHour, isProfileDueForReminder } from '../_shared/reminder-schedule.ts'
+
+const REMINDER_HOUR = 22 // 10 PM, in the user's own timezone
+const NOTIFICATION_TITLE = 'ProfitGo Reminder 💰'
+const NOTIFICATION_BODY = "Add today's earnings & expenses"
+
+interface ProfileRow {
+  id: string
+  user_id: string
+  timezone: string
+  last_reminder_sent_date: string | null
+}
+
+interface PushSubscriptionRow {
+  id: string
+  endpoint: string
+  p256dh: string
+  auth_key: string
+}
+
+Deno.serve(async (_req) => {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY')
+  const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY')
+  const vapidSubject = Deno.env.get('VAPID_SUBJECT')
+
+  if (!supabaseUrl || !serviceRoleKey || !vapidPublicKey || !vapidPrivateKey || !vapidSubject) {
+    return new Response(JSON.stringify({ error: 'Missing required environment secrets' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey)
+  const now = new Date()
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, user_id, timezone, last_reminder_sent_date')
+    .eq('daily_reminder_enabled', true)
+
+  if (profilesError) {
+    return new Response(JSON.stringify({ error: profilesError.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  const duePeople = (profiles ?? []).filter((p: ProfileRow) => isProfileDueForReminder(p, now, REMINDER_HOUR))
+
+  let notificationsSent = 0
+  let subscriptionsRemoved = 0
+  const errors: string[] = []
+
+  for (const profile of duePeople as ProfileRow[]) {
+    const { localDate } = getLocalDateAndHour(profile.timezone || 'Asia/Kolkata', now)
+
+    const { data: subscriptions, error: subsError } = await supabase
+      .from('push_subscriptions')
+      .select('id, endpoint, p256dh, auth_key')
+      .eq('user_id', profile.user_id)
+
+    if (subsError) {
+      errors.push(`user ${profile.user_id}: ${subsError.message}`)
+      continue
+    }
+
+    const results = await Promise.allSettled(
+      (subscriptions ?? []).map((sub: PushSubscriptionRow) =>
+        webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth_key },
+          },
+          JSON.stringify({ title: NOTIFICATION_TITLE, body: NOTIFICATION_BODY, url: '/dashboard' }),
+        ).then(
+          () => ({ sub, ok: true as const }),
+          (err) => ({ sub, ok: false as const, err }),
+        ),
+      ),
+    )
+
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue
+      const outcome = result.value
+      if (outcome.ok) {
+        notificationsSent++
+        continue
+      }
+      // 404/410 = the browser/OS has invalidated this subscription (uninstalled, expired, etc).
+      const statusCode = outcome.err?.statusCode
+      if (statusCode === 404 || statusCode === 410) {
+        await supabase.from('push_subscriptions').delete().eq('id', outcome.sub.id)
+        subscriptionsRemoved++
+      } else {
+        errors.push(`subscription ${outcome.sub.id}: ${outcome.err?.message ?? 'unknown error'}`)
+      }
+    }
+
+    // Mark as sent for today even if the user had zero subscriptions, so we
+    // don't keep re-checking them every 15 minutes for the rest of the hour.
+    await supabase.from('profiles').update({ last_reminder_sent_date: localDate }).eq('id', profile.id)
+  }
+
+  return new Response(
+    JSON.stringify({
+      profilesChecked: profiles?.length ?? 0,
+      profilesDue: duePeople.length,
+      notificationsSent,
+      subscriptionsRemoved,
+      errors,
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  )
+})
+</file>
+
+<file path="supabase/cron-setup.sql">
+-- =====================================================================
+-- ProfitGo — Daily reminder scheduling setup
+--
+-- This schedules the `send-daily-reminders` Edge Function to run every
+-- 15 minutes. The function itself figures out, per user, whether it's
+-- currently 10 PM in *their* timezone and whether they've already been
+-- sent today's reminder — running every 15 minutes just gives it enough
+-- chances to catch everyone's 10 PM as it rolls through timezones.
+--
+-- Run this ONCE in the Supabase SQL Editor, AFTER you have:
+--   1. Deployed the Edge Function:
+--        supabase functions deploy send-daily-reminders
+--   2. Set its secrets:
+--        supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:you@example.com
+--
+-- Replace the two placeholders below before running:
+--   <PROJECT_REF>   — your Supabase project ref (from Project Settings -> General)
+--   <SERVICE_ROLE_KEY> — Project Settings -> API -> service_role key (SECRET — never
+--                          put this in frontend code; it's fine here because this SQL
+--                          runs entirely inside your own Postgres database)
+-- =====================================================================
+
+-- Required extensions (usually already enabled on Supabase projects).
+create extension if not exists pg_cron with schema extensions;
+create extension if not exists pg_net with schema extensions;
+
+-- Store the service-role key as an encrypted secret rather than inlining it
+-- in the cron job body, so it never shows up in plain text in `cron.job`.
+select vault.create_secret('<SERVICE_ROLE_KEY>', 'profitgo_service_role_key');
+
+select cron.schedule(
+  'profitgo-send-daily-reminders',
+  '*/15 * * * *', -- every 15 minutes, every day
+  $$
+  select net.http_post(
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/send-daily-reminders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (
+        select decrypted_secret from vault.decrypted_secrets
+        where name = 'profitgo_service_role_key'
+      )
+    ),
+    body := '{}'::jsonb
+  );
+  $$
+);
+
+-- To check it's registered:
+--   select * from cron.job where jobname = 'profitgo-send-daily-reminders';
+-- To see run history:
+--   select * from cron.job_run_details order by start_time desc limit 20;
+-- To remove it later:
+--   select cron.unschedule('profitgo-send-daily-reminders');
+</file>
+
+<file path="src/components/auth/ProtectedRoute.tsx">
+import type { ReactNode } from 'react'
+import { Navigate } from 'react-router-dom'
+import { useAuth } from '@/context/AuthContext'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+
+export function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <LoadingSpinner label="Loading..." />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
+}
+</file>
+
+<file path="src/components/dashboard/BestDayCard.tsx">
+import type { LucideIcon } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+import { formatINR } from '@/utils/currency'
+import { formatDisplayDate } from '@/utils/date'
+import type { BestDayStats } from '@/types'
+
+interface BestDayCardProps {
+  title: string
+  icon: LucideIcon
+  stats: BestDayStats
+  emptyMessage: string
+}
+
+/** One period's Best Earning Day + Average Daily Earning — reused for All Time / This Week / This Month. */
+export function BestDayCard({ title, icon: Icon, stats, emptyMessage }: BestDayCardProps) {
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+          <Icon className="h-4 w-4" />
+        </span>
+        <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
+      </div>
+
+      {stats.bestDay ? (
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-xs font-medium text-slate-500">Best Earning Day</p>
+            <p className="text-xl font-bold text-profit-600">{formatINR(stats.bestDay.amount)}</p>
+            <p className="text-xs text-slate-400">{formatDisplayDate(stats.bestDay.date)}</p>
+          </div>
+          <div className="border-t border-slate-100 pt-3">
+            <p className="text-xs font-medium text-slate-500">Average Daily Earning</p>
+            <p className="text-base font-semibold text-slate-900">
+              {stats.averageDailyEarning !== null ? formatINR(stats.averageDailyEarning) : '--'}
+            </p>
+            <p className="text-xs text-slate-400">across {stats.activeDays} earning day{stats.activeDays === 1 ? '' : 's'}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="py-4 text-center text-sm text-slate-400">{emptyMessage}</p>
+      )}
+    </Card>
+  )
+}
+</file>
+
+<file path="src/components/dashboard/ChartCard.tsx">
+import type { ReactNode } from 'react'
+import { Card } from '@/components/ui/Card'
+
+export function ChartCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Card className="p-4">
+      <h3 className="mb-3 text-sm font-semibold text-slate-700">{title}</h3>
+      <div className="h-52 w-full">{children}</div>
+    </Card>
+  )
+}
+</file>
+
+<file path="src/components/dashboard/chartUtils.ts">
+import { formatShortDate } from '@/utils/date'
+import { formatINR } from '@/utils/currency'
+
+export function chartXAxisTick(value: string): string {
+  return formatShortDate(value)
+}
+
+export function chartTooltipFormatter(value: number | string): [string, string] {
+  return [formatINR(Number(value)), '']
+}
+</file>
+
+<file path="src/components/dashboard/DailyEarningsChart.tsx">
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { ChartCard } from './ChartCard'
+import { chartTooltipFormatter, chartXAxisTick } from './chartUtils'
+import type { DailyBreakdownPoint } from '@/types'
+
+export function DailyEarningsChart({ data }: { data: DailyBreakdownPoint[] }) {
+  return (
+    <ChartCard title="Daily Earnings">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="date" tickFormatter={chartXAxisTick} tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} width={40} />
+          <Tooltip formatter={chartTooltipFormatter} labelFormatter={chartXAxisTick} />
+          <Bar dataKey="earnings" fill="#16a34a" radius={[4, 4, 0, 0]} maxBarSize={24} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  )
+}
+</file>
+
+<file path="src/components/dashboard/DailyPetrolChart.tsx">
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { ChartCard } from './ChartCard'
+import { chartTooltipFormatter, chartXAxisTick } from './chartUtils'
+import type { DailyBreakdownPoint } from '@/types'
+
+export function DailyPetrolChart({ data }: { data: DailyBreakdownPoint[] }) {
+  return (
+    <ChartCard title="Daily Petrol Expense">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="date" tickFormatter={chartXAxisTick} tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} width={40} />
+          <Tooltip formatter={chartTooltipFormatter} labelFormatter={chartXAxisTick} />
+          <Bar dataKey="petrol" fill="#dc2626" radius={[4, 4, 0, 0]} maxBarSize={24} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  )
+}
+</file>
+
+<file path="src/components/dashboard/DailyProfitChart.tsx">
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { ChartCard } from './ChartCard'
+import { chartTooltipFormatter, chartXAxisTick } from './chartUtils'
+import type { DailyBreakdownPoint } from '@/types'
+
+export function DailyProfitChart({ data }: { data: DailyBreakdownPoint[] }) {
+  return (
+    <ChartCard title="Daily Profit">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="date" tickFormatter={chartXAxisTick} tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} width={40} />
+          <Tooltip formatter={chartTooltipFormatter} labelFormatter={chartXAxisTick} />
+          <Line
+            type="monotone"
+            dataKey="profit"
+            stroke="#4f46e5"
+            strokeWidth={2}
+            dot={{ r: 2 }}
+            activeDot={{ r: 4 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  )
+}
+</file>
+
+<file path="src/components/dashboard/EarningsVsExpensesChart.tsx">
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { ChartCard } from './ChartCard'
+import { chartTooltipFormatter, chartXAxisTick } from './chartUtils'
+import type { DailyBreakdownPoint } from '@/types'
+
+export function EarningsVsExpensesChart({ data }: { data: DailyBreakdownPoint[] }) {
+  return (
+    <ChartCard title="Earnings vs Expenses">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+          <XAxis dataKey="date" tickFormatter={chartXAxisTick} tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} width={40} />
+          <Tooltip formatter={chartTooltipFormatter} labelFormatter={chartXAxisTick} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="earnings" name="Earnings" fill="#16a34a" radius={[4, 4, 0, 0]} maxBarSize={18} />
+          <Bar dataKey="expenses" name="Expenses" fill="#dc2626" radius={[4, 4, 0, 0]} maxBarSize={18} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  )
+}
+</file>
+
+<file path="src/components/dashboard/ProfitStatusBanner.tsx">
+import clsx from 'clsx'
+import { TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import { formatINR } from '@/utils/currency'
+import type { FinancialSummary } from '@/types'
+
+interface ProfitStatusBannerProps {
+  netProfit: number
+  status: FinancialSummary['status']
+  periodLabel: string
+}
+
+const statusConfig = {
+  PROFIT: {
+    icon: TrendingUp,
+    bg: 'bg-gradient-to-br from-profit-500 to-profit-700',
+    badge: 'bg-white/20 text-white',
+  },
+  LOSS: {
+    icon: TrendingDown,
+    bg: 'bg-gradient-to-br from-loss-500 to-loss-700',
+    badge: 'bg-white/20 text-white',
+  },
+  'BREAK EVEN': {
+    icon: Minus,
+    bg: 'bg-gradient-to-br from-slate-500 to-slate-700',
+    badge: 'bg-white/20 text-white',
+  },
+} as const
+
+export function ProfitStatusBanner({ netProfit, status, periodLabel }: ProfitStatusBannerProps) {
+  const config = statusConfig[status]
+  const Icon = config.icon
+
+  return (
+    <div className={clsx('rounded-2xl p-6 text-white shadow-lg', config.bg)}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-white/80">{periodLabel} Net Profit</p>
+        <span className={clsx('flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold', config.badge)}>
+          <Icon className="h-3.5 w-3.5" />
+          {status}
+        </span>
+      </div>
+      <p className="mt-2 text-4xl font-extrabold tracking-tight">
+        {netProfit < 0 ? '-' : ''}
+        {formatINR(Math.abs(netProfit))}
+      </p>
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/dashboard/StatCard.tsx">
+import type { LucideIcon } from 'lucide-react'
+import clsx from 'clsx'
+import { Card } from '@/components/ui/Card'
+import { formatINR } from '@/utils/currency'
+
+interface StatCardProps {
+  label: string
+  amount: number
+  icon: LucideIcon
+  tone?: 'neutral' | 'positive' | 'negative'
+}
+
+const toneClasses: Record<NonNullable<StatCardProps['tone']>, string> = {
+  neutral: 'bg-slate-100 text-slate-600',
+  positive: 'bg-profit-50 text-profit-600',
+  negative: 'bg-loss-50 text-loss-600',
+}
+
+export function StatCard({ label, amount, icon: Icon, tone = 'neutral' }: StatCardProps) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-3">
+        <span className={clsx('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', toneClasses[tone])}>
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-slate-500">{label}</p>
+          <p className="truncate text-lg font-bold text-slate-900">{formatINR(amount)}</p>
+        </div>
+      </div>
+    </Card>
+  )
+}
+</file>
+
+<file path="src/components/forms/AddEarningForm.tsx">
+import { type FormEvent, useState } from 'react'
+import toast from 'react-hot-toast'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { useAuth } from '@/context/AuthContext'
+import { createEarning, updateEarning } from '@/services/earnings.service'
+import { validateAmount, validateDate } from '@/utils/validation'
+import { todayISO } from '@/utils/date'
+import type { Earning } from '@/types'
+
+interface AddEarningFormProps {
+  initial?: Earning
+  onSuccess: () => void
+}
+
+export function AddEarningForm({ initial, onSuccess }: AddEarningFormProps) {
+  const { user } = useAuth()
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
+  const [date, setDate] = useState(initial?.date ?? todayISO())
+  const [note, setNote] = useState(initial?.note ?? '')
+  const [errors, setErrors] = useState<{ amount?: string; date?: string }>({})
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const amountCheck = validateAmount(amount)
+    const dateCheck = validateDate(date)
+    if (!amountCheck.valid || !dateCheck.valid) {
+      setErrors({ amount: amountCheck.error, date: dateCheck.error })
+      return
+    }
+    if (!user) return
+
+    setSubmitting(true)
+    try {
+      const payload = { amount: Number(amount), date, note: note.trim() || null }
+      if (initial) {
+        await updateEarning(initial.id, payload)
+        toast.success('Earning updated')
+      } else {
+        await createEarning(user.id, payload)
+        toast.success('Earning added')
+      }
+      onSuccess()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save earning')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Input
+        label="Amount"
+        type="number"
+        inputMode="decimal"
+        prefix="₹"
+        autoFocus
+        placeholder="0"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        error={errors.amount}
+      />
+      <Input
+        label="Date"
+        type="date"
+        value={date}
+        max={todayISO()}
+        onChange={(e) => setDate(e.target.value)}
+        error={errors.date}
+      />
+      <Input
+        label="Note (optional)"
+        type="text"
+        placeholder="e.g. Rapido earning"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <Button type="submit" fullWidth size="lg" variant="success" loading={submitting}>
+        {initial ? 'Save Changes' : 'Add Earning'}
+      </Button>
+    </form>
+  )
+}
+</file>
+
+<file path="src/components/forms/AddExpenseForm.tsx">
+import { type FormEvent, useState } from 'react'
+import toast from 'react-hot-toast'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { Button } from '@/components/ui/Button'
+import { useAuth } from '@/context/AuthContext'
+import {
+  addCustomCategory,
+  createExpense,
+  getCustomCategories,
+  updateExpense,
+} from '@/services/expenses.service'
+import { validateAmount, validateDate } from '@/utils/validation'
+import { todayISO } from '@/utils/date'
+import { EXPENSE_CATEGORIES } from '@/types'
+import type { Expense } from '@/types'
+
+interface AddExpenseFormProps {
+  initial?: Expense
+  onSuccess: () => void
+}
+
+const NEW_CATEGORY_VALUE = '__new__'
+
+export function AddExpenseForm({ initial, onSuccess }: AddExpenseFormProps) {
+  const { user } = useAuth()
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
+  const [category, setCategory] = useState(initial?.category ?? EXPENSE_CATEGORIES[0])
+  const [customCategory, setCustomCategory] = useState('')
+  const [date, setDate] = useState(initial?.date ?? todayISO())
+  const [note, setNote] = useState(initial?.note ?? '')
+  const [errors, setErrors] = useState<{ amount?: string; date?: string; category?: string }>({})
+  const [submitting, setSubmitting] = useState(false)
+
+  const allCategories = [...EXPENSE_CATEGORIES, ...getCustomCategories()]
+  const isAddingCustom = category === NEW_CATEGORY_VALUE
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const amountCheck = validateAmount(amount)
+    const dateCheck = validateDate(date)
+    const finalCategory = isAddingCustom ? customCategory.trim() : category
+    if (isAddingCustom && !finalCategory) {
+      setErrors({ category: 'Enter a category name' })
+      return
+    }
+    if (!amountCheck.valid || !dateCheck.valid) {
+      setErrors({ amount: amountCheck.error, date: dateCheck.error })
+      return
+    }
+    if (!user) return
+
+    setSubmitting(true)
+    try {
+      if (isAddingCustom) addCustomCategory(finalCategory)
+      const payload = { amount: Number(amount), category: finalCategory, date, note: note.trim() || null }
+      if (initial) {
+        await updateExpense(initial.id, payload)
+        toast.success('Expense updated')
+      } else {
+        await createExpense(user.id, payload)
+        toast.success('Expense added')
+      }
+      onSuccess()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save expense')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Input
+        label="Amount"
+        type="number"
+        inputMode="decimal"
+        prefix="₹"
+        autoFocus
+        placeholder="0"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        error={errors.amount}
+      />
+      <Select
+        label="Category"
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+        error={errors.category}
+      >
+        {allCategories.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+        <option value={NEW_CATEGORY_VALUE}>+ Add custom category</option>
+      </Select>
+      {isAddingCustom && (
+        <Input
+          label="New Category Name"
+          type="text"
+          placeholder="e.g. Insurance"
+          value={customCategory}
+          onChange={(e) => setCustomCategory(e.target.value)}
+        />
+      )}
+      <Input
+        label="Date"
+        type="date"
+        value={date}
+        max={todayISO()}
+        onChange={(e) => setDate(e.target.value)}
+        error={errors.date}
+      />
+      <Input
+        label="Note (optional)"
+        type="text"
+        placeholder="e.g. Chain lubrication"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <Button type="submit" fullWidth size="lg" variant="danger" loading={submitting}>
+        {initial ? 'Save Changes' : 'Add Expense'}
+      </Button>
+    </form>
+  )
+}
+</file>
+
+<file path="src/components/forms/AddPetrolForm.tsx">
+import { type FormEvent, useState } from 'react'
+import toast from 'react-hot-toast'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { useAuth } from '@/context/AuthContext'
+import { createPetrolEntry, updatePetrolEntry } from '@/services/petrol.service'
+import { validateAmount, validateDate, validateOptionalPositiveNumber } from '@/utils/validation'
+import { todayISO } from '@/utils/date'
+import type { PetrolEntry } from '@/types'
+
+interface AddPetrolFormProps {
+  initial?: PetrolEntry
+  onSuccess: () => void
+}
+
+export function AddPetrolForm({ initial, onSuccess }: AddPetrolFormProps) {
+  const { user } = useAuth()
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
+  const [date, setDate] = useState(initial?.date ?? todayISO())
+  const [litres, setLitres] = useState(initial?.litres != null ? String(initial.litres) : '')
+  const [pricePerLitre, setPricePerLitre] = useState(
+    initial?.price_per_litre != null ? String(initial.price_per_litre) : '',
+  )
+  const [station, setStation] = useState(initial?.petrol_station ?? '')
+  const [note, setNote] = useState(initial?.note ?? '')
+  const [errors, setErrors] = useState<{ amount?: string; date?: string; litres?: string; price?: string }>({})
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const amountCheck = validateAmount(amount)
+    const dateCheck = validateDate(date)
+    const litresCheck = validateOptionalPositiveNumber(litres)
+    const priceCheck = validateOptionalPositiveNumber(pricePerLitre)
+    if (!amountCheck.valid || !dateCheck.valid || !litresCheck.valid || !priceCheck.valid) {
+      setErrors({
+        amount: amountCheck.error,
+        date: dateCheck.error,
+        litres: litresCheck.error,
+        price: priceCheck.error,
+      })
+      return
+    }
+    if (!user) return
+
+    setSubmitting(true)
+    try {
+      const payload = {
+        amount: Number(amount),
+        date,
+        litres: litres.trim() ? Number(litres) : null,
+        price_per_litre: pricePerLitre.trim() ? Number(pricePerLitre) : null,
+        petrol_station: station.trim() || null,
+        note: note.trim() || null,
+      }
+      if (initial) {
+        await updatePetrolEntry(initial.id, payload)
+        toast.success('Petrol entry updated')
+      } else {
+        await createPetrolEntry(user.id, payload)
+        toast.success('Petrol expense added')
+      }
+      onSuccess()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save petrol entry')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Input
+        label="Amount"
+        type="number"
+        inputMode="decimal"
+        prefix="₹"
+        autoFocus
+        placeholder="0"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        error={errors.amount}
+      />
+      <Input
+        label="Date"
+        type="date"
+        value={date}
+        max={todayISO()}
+        onChange={(e) => setDate(e.target.value)}
+        error={errors.date}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          label="Litres (optional)"
+          type="number"
+          inputMode="decimal"
+          placeholder="0.0"
+          value={litres}
+          onChange={(e) => setLitres(e.target.value)}
+          error={errors.litres}
+        />
+        <Input
+          label="Price/Litre (optional)"
+          type="number"
+          inputMode="decimal"
+          prefix="₹"
+          placeholder="0"
+          value={pricePerLitre}
+          onChange={(e) => setPricePerLitre(e.target.value)}
+          error={errors.price}
+        />
+      </div>
+      <Input
+        label="Petrol Station (optional)"
+        type="text"
+        placeholder="e.g. HP Petrol Pump"
+        value={station}
+        onChange={(e) => setStation(e.target.value)}
+      />
+      <Input
+        label="Note (optional)"
+        type="text"
+        placeholder="e.g. Morning petrol"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <Button type="submit" fullWidth size="lg" variant="danger" loading={submitting}>
+        {initial ? 'Save Changes' : 'Add Petrol'}
+      </Button>
+    </form>
+  )
+}
+</file>
+
+<file path="src/components/navigation/BottomNav.tsx">
+import clsx from 'clsx'
+import { NavLink } from 'react-router-dom'
+import { navItems } from './navItems'
+
+export function BottomNav() {
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur safe-bottom md:hidden">
+      <div className="mx-auto flex max-w-lg items-stretch justify-between px-2">
+        {navItems.map(({ to, label, icon: Icon }) => {
+          const isAdd = to === '/add'
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                clsx(
+                  'flex flex-1 flex-col items-center justify-center gap-0.5 py-2.5 text-xs font-medium transition-colors',
+                  isActive ? 'text-brand-600' : 'text-slate-500',
+                )
+              }
+            >
+              {({ isActive }) =>
+                isAdd ? (
+                  <span className="-mt-6 flex h-12 w-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30">
+                    <Icon className="h-6 w-6" />
+                  </span>
+                ) : (
+                  <>
+                    <Icon className={clsx('h-5 w-5', isActive && 'text-brand-600')} />
+                    <span>{label}</span>
+                  </>
+                )
+              }
+            </NavLink>
+          )
+        })}
+      </div>
+    </nav>
+  )
+}
+</file>
+
+<file path="src/components/navigation/navItems.ts">
+import { History, LayoutDashboard, PlusCircle, User, FileText } from 'lucide-react'
+
+export const navItems = [
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/history', label: 'History', icon: History },
+  { to: '/add', label: 'Add', icon: PlusCircle },
+  { to: '/reports', label: 'Reports', icon: FileText },
+  { to: '/profile', label: 'Profile', icon: User },
+] as const
+</file>
+
+<file path="src/components/profile/ImageUploadField.tsx">
+import { useRef, useState } from 'react'
+import { Camera, Loader2 } from 'lucide-react'
+import clsx from 'clsx'
+
+interface ImageUploadFieldProps {
+  label: string
+  imageUrl: string | null
+  shape?: 'circle' | 'square'
+  onUpload: (file: File) => Promise<void>
+}
+
+const MAX_FILE_SIZE_MB = 5
+
+export function ImageUploadField({ label, imageUrl, shape = 'circle', onUpload }: ImageUploadFieldProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setError(null)
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file')
+      return
+    }
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      setError(`Image must be smaller than ${MAX_FILE_SIZE_MB}MB`)
+      return
+    }
+
+    setUploading(true)
+    try {
+      await onUpload(file)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className={clsx(
+          'relative flex h-28 w-28 items-center justify-center overflow-hidden border-2 border-dashed border-slate-300 bg-slate-50 transition-colors hover:border-brand-400',
+          shape === 'circle' ? 'rounded-full' : 'rounded-2xl',
+        )}
+      >
+        {imageUrl ? (
+          <img src={imageUrl} alt={label} className="h-full w-full object-cover" />
+        ) : (
+          <Camera className="h-8 w-8 text-slate-400" />
+        )}
+        {uploading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <Loader2 className="h-6 w-6 animate-spin text-white" />
+          </div>
+        )}
+      </button>
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      {error && <p className="text-xs font-medium text-loss-600">{error}</p>}
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/profile/ProfileForm.tsx">
+import { type FormEvent, useState } from 'react'
+import toast from 'react-hot-toast'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { validateRequired } from '@/utils/validation'
+import type { Profile } from '@/types'
+
+interface ProfileFormProps {
+  profile: Profile | null
+  onSave: (input: { name: string; mobile: string; upi_id: string }) => Promise<void>
+}
+
+export function ProfileForm({ profile, onSave }: ProfileFormProps) {
+  const [name, setName] = useState(profile?.name ?? '')
+  const [mobile, setMobile] = useState(profile?.mobile ?? '')
+  const [upiId, setUpiId] = useState(profile?.upi_id ?? '')
+  const [errors, setErrors] = useState<{ name?: string }>({})
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const nameCheck = validateRequired(name, 'Name')
+    if (!nameCheck.valid) {
+      setErrors({ name: nameCheck.error })
+      return
+    }
+    setErrors({})
+    setSaving(true)
+    try {
+      await onSave({ name: name.trim(), mobile: mobile.trim(), upi_id: upiId.trim() })
+      toast.success('Profile updated')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update profile')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Input label="Name" type="text" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} />
+      <Input
+        label="Mobile Number"
+        type="tel"
+        placeholder="10-digit mobile number"
+        value={mobile}
+        onChange={(e) => setMobile(e.target.value)}
+      />
+      <Input
+        label="UPI ID"
+        type="text"
+        placeholder="yourname@upi"
+        value={upiId}
+        onChange={(e) => setUpiId(e.target.value)}
+      />
+      <Button type="submit" fullWidth loading={saving}>
+        Save Profile
+      </Button>
+    </form>
+  )
+}
+</file>
+
+<file path="src/components/profile/QRDisplay.tsx">
+import { QrCode } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+
+interface QRDisplayProps {
+  qrImageUrl: string | null
+  upiId: string | null
+}
+
+/** Large, clear QR display meant to be shown to customers for payment — separate from the small edit thumbnail. */
+export function QRDisplay({ qrImageUrl, upiId }: QRDisplayProps) {
+  return (
+    <Card className="flex flex-col items-center gap-3 p-6 text-center">
+      {qrImageUrl ? (
+        <img src={qrImageUrl} alt="UPI QR Code" className="h-56 w-56 rounded-xl object-contain" />
+      ) : (
+        <div className="flex h-56 w-56 flex-col items-center justify-center gap-2 rounded-xl bg-slate-50 text-slate-400">
+          <QrCode className="h-12 w-12" />
+          <p className="text-sm">No QR code uploaded yet</p>
+        </div>
+      )}
+      {upiId && (
+        <div>
+          <p className="text-xs font-medium text-slate-500">UPI ID</p>
+          <p className="text-base font-semibold text-slate-900">{upiId}</p>
+        </div>
+      )}
+    </Card>
+  )
+}
+</file>
+
+<file path="src/components/reports/DateRangeSelector.tsx">
+import clsx from 'clsx'
+import { Input } from '@/components/ui/Input'
+import type { ReportPreset } from '@/utils/date'
+
+interface DateRangeSelectorProps {
+  preset: ReportPreset
+  start: string
+  end: string
+  onPresetChange: (preset: ReportPreset) => void
+  onCustomChange: (start: string, end: string) => void
+}
+
+const presets: { key: ReportPreset; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: 'week', label: 'This Week' },
+  { key: 'month', label: 'This Month' },
+  { key: 'custom', label: 'Custom' },
+]
+
+export function DateRangeSelector({ preset, start, end, onPresetChange, onCustomChange }: DateRangeSelectorProps) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {presets.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => onPresetChange(p.key)}
+            className={clsx(
+              'shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors',
+              preset === p.key ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {preset === 'custom' && (
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Start Date" type="date" value={start} onChange={(e) => onCustomChange(e.target.value, end)} />
+          <Input label="End Date" type="date" value={end} onChange={(e) => onCustomChange(start, e.target.value)} />
+        </div>
+      )}
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/reports/GetBillButton.tsx">
+import { useState } from 'react'
+import { FileDown } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { Button } from '@/components/ui/Button'
+import { Sheet } from '@/components/ui/Sheet'
+import { Input } from '@/components/ui/Input'
+import { fetchEarnings } from '@/services/earnings.service'
+import { fetchPetrolEntries } from '@/services/petrol.service'
+import { fetchExpenses } from '@/services/expenses.service'
+import { currentMonthRange, todayISO } from '@/utils/date'
+
+interface GetBillButtonProps {
+  userId: string
+  userName: string
+}
+
+export function GetBillButton({ userId, userName }: GetBillButtonProps) {
+  const [open, setOpen] = useState(false)
+  const monthRange = currentMonthRange()
+  const [start, setStart] = useState(monthRange.start)
+  const [end, setEnd] = useState(monthRange.end)
+  const [generating, setGenerating] = useState(false)
+
+  async function handleGenerate() {
+    if (start > end) {
+      toast.error('Start date must be before end date')
+      return
+    }
+    setGenerating(true)
+    try {
+      const [{ downloadReportPdf }, earnings, petrolEntries, expenses] = await Promise.all([
+        import('@/lib/pdf/generateReportPdf'),
+        fetchEarnings(userId, start, end),
+        fetchPetrolEntries(userId, start, end),
+        fetchExpenses(userId, start, end),
+      ])
+      downloadReportPdf({ userName, startDate: start, endDate: end, earnings, petrolEntries, expenses })
+      toast.success('Report generated')
+      setOpen(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to generate report')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  return (
+    <>
+      <Button size="lg" fullWidth onClick={() => setOpen(true)} className="shadow-lg shadow-brand-600/20">
+        <FileDown className="h-5 w-5" />
+        GET BILL
+      </Button>
+
+      <Sheet open={open} onClose={() => setOpen(false)} title="Generate PDF Bill">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-slate-500">Select the period for your financial report.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Start Date" type="date" value={start} max={todayISO()} onChange={(e) => setStart(e.target.value)} />
+            <Input label="End Date" type="date" value={end} max={todayISO()} onChange={(e) => setEnd(e.target.value)} />
+          </div>
+          <Button size="lg" fullWidth onClick={handleGenerate} loading={generating}>
+            Download PDF
+          </Button>
+        </div>
+      </Sheet>
+    </>
+  )
+}
+</file>
+
+<file path="src/components/reports/ReportSummary.tsx">
+import { Card } from '@/components/ui/Card'
+import { formatINR } from '@/utils/currency'
+import type { FinancialSummary } from '@/types'
+
+export function ReportSummary({ summary }: { summary: FinancialSummary }) {
+  const rows: { label: string; value: string; bold?: boolean; tone?: 'positive' | 'negative' | 'neutral' }[] = [
+    { label: 'Total Earnings', value: formatINR(summary.totalEarnings), tone: 'positive' },
+    { label: 'Petrol Expense', value: formatINR(summary.totalPetrol), tone: 'negative' },
+    { label: 'Other Expenses', value: formatINR(summary.totalOtherExpenses), tone: 'negative' },
+    { label: 'Total Expenses', value: formatINR(summary.totalExpenses), tone: 'negative' },
+  ]
+
+  return (
+    <Card className="p-5">
+      <div className="flex flex-col divide-y divide-slate-100">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between py-2.5">
+            <span className="text-sm text-slate-600">{row.label}</span>
+            <span
+              className={
+                row.tone === 'positive'
+                  ? 'font-semibold text-profit-600'
+                  : row.tone === 'negative'
+                    ? 'font-semibold text-loss-600'
+                    : 'font-semibold text-slate-900'
+              }
+            >
+              {row.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3.5">
+        <div>
+          <p className="text-sm font-semibold text-slate-700">Net Profit</p>
+          <p className="text-xs text-slate-400">{summary.status}</p>
+        </div>
+        <p className={`text-xl font-extrabold ${summary.netProfit >= 0 ? 'text-profit-600' : 'text-loss-600'}`}>
+          {formatINR(summary.netProfit)}
+        </p>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+        <div>
+          <p className="text-lg font-bold text-slate-900">{summary.earningCount}</p>
+          <p className="text-xs text-slate-500">Earnings</p>
+        </div>
+        <div>
+          <p className="text-lg font-bold text-slate-900">{summary.petrolCount}</p>
+          <p className="text-xs text-slate-500">Petrol</p>
+        </div>
+        <div>
+          <p className="text-lg font-bold text-slate-900">{summary.expenseCount}</p>
+          <p className="text-xs text-slate-500">Expenses</p>
+        </div>
+      </div>
+    </Card>
+  )
+}
+</file>
+
+<file path="src/components/transactions/TransactionFilters.tsx">
+import { Search } from 'lucide-react'
+import { Input } from '@/components/ui/Input'
+import { Select } from '@/components/ui/Select'
+import { EXPENSE_CATEGORIES } from '@/types'
+import { getCustomCategories } from '@/services/expenses.service'
+import type { TransactionType } from '@/types'
+
+export interface TransactionFilterState {
+  search: string
+  type: TransactionType | 'all'
+  category: string | 'all'
+  dateFrom: string
+  dateTo: string
+}
+
+interface TransactionFiltersProps {
+  filters: TransactionFilterState
+  onChange: (filters: TransactionFilterState) => void
+}
+
+export function TransactionFilters({ filters, onChange }: TransactionFiltersProps) {
+  const allCategories = [...EXPENSE_CATEGORIES, ...getCustomCategories()]
+
+  function set<K extends keyof TransactionFilterState>(key: K, value: TransactionFilterState[K]) {
+    onChange({ ...filters, [key]: value })
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+        <Input
+          placeholder="Search description or note..."
+          value={filters.search}
+          onChange={(e) => set('search', e.target.value)}
+          className="pl-11"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          label="From"
+          type="date"
+          value={filters.dateFrom}
+          onChange={(e) => set('dateFrom', e.target.value)}
+        />
+        <Input label="To" type="date" value={filters.dateTo} onChange={(e) => set('dateTo', e.target.value)} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Select label="Type" value={filters.type} onChange={(e) => set('type', e.target.value as TransactionFilterState['type'])}>
+          <option value="all">All Types</option>
+          <option value="earning">Earning</option>
+          <option value="petrol">Petrol</option>
+          <option value="expense">Expense</option>
+        </Select>
+        <Select label="Category" value={filters.category} onChange={(e) => set('category', e.target.value)}>
+          <option value="all">All Categories</option>
+          {allCategories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </div>
+    </div>
+  )
+}
+
+export const emptyFilters: TransactionFilterState = {
+  search: '',
+  type: 'all',
+  category: 'all',
+  dateFrom: '',
+  dateTo: '',
+}
+</file>
+
+<file path="src/components/transactions/TransactionItem.tsx">
+import { Fuel, Pencil, ReceiptText, Trash2, Wallet } from 'lucide-react'
+import { formatShortDate } from '@/utils/date'
+import { formatSignedINR } from '@/utils/currency'
+import type { Transaction } from '@/types'
+
+interface TransactionItemProps {
+  transaction: Transaction
+  onEdit: () => void
+  onDelete: () => void
+}
+
+const typeConfig = {
+  earning: { icon: Wallet, iconBg: 'bg-profit-50 text-profit-600', sign: '+' as const },
+  petrol: { icon: Fuel, iconBg: 'bg-loss-50 text-loss-600', sign: '-' as const },
+  expense: { icon: ReceiptText, iconBg: 'bg-amber-50 text-amber-600', sign: '-' as const },
+}
+
+export function TransactionItem({ transaction, onEdit, onDelete }: TransactionItemProps) {
+  const config = typeConfig[transaction.type]
+  const Icon = config.icon
+
+  return (
+    <div className="flex items-center gap-3 border-b border-slate-100 py-3.5 last:border-0">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${config.iconBg}`}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-slate-900">{transaction.description}</p>
+        <p className="text-xs text-slate-500">
+          {formatShortDate(transaction.date)}
+          {transaction.note ? ` · ${transaction.note}` : ''}
+        </p>
+      </div>
+      <p
+        className={`shrink-0 text-sm font-bold ${config.sign === '+' ? 'text-profit-600' : 'text-loss-600'}`}
+      >
+        {formatSignedINR(transaction.amount, config.sign)}
+      </p>
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label="Edit transaction"
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label="Delete transaction"
+          className="rounded-lg p-2 text-slate-400 hover:bg-loss-50 hover:text-loss-600"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/transactions/TransactionList.tsx">
+import { useMemo } from 'react'
+import { Inbox } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { TransactionItem } from './TransactionItem'
+import { formatDisplayDate } from '@/utils/date'
+import type { Transaction } from '@/types'
+
+interface TransactionListProps {
+  transactions: Transaction[]
+  onEdit: (transaction: Transaction) => void
+  onDelete: (transaction: Transaction) => void
+}
+
+export function TransactionList({ transactions, onEdit, onDelete }: TransactionListProps) {
+  const groups = useMemo(() => {
+    const map = new Map<string, Transaction[]>()
+    for (const t of transactions) {
+      const list = map.get(t.date) ?? []
+      list.push(t)
+      map.set(t.date, list)
+    }
+    return Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1))
+  }, [transactions])
+
+  if (transactions.length === 0) {
+    return (
+      <EmptyState
+        icon={Inbox}
+        title="No transactions found"
+        description="Try adjusting your filters, or add your first transaction."
+      />
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {groups.map(([date, items]) => (
+        <div key={date}>
+          <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            {formatDisplayDate(date)}
+          </p>
+          <Card className="px-4">
+            {items.map((t) => (
+              <TransactionItem key={`${t.type}-${t.id}`} transaction={t} onEdit={() => onEdit(t)} onDelete={() => onDelete(t)} />
+            ))}
+          </Card>
+        </div>
+      ))}
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/ui/Button.tsx">
+import clsx from 'clsx'
+import { type ButtonHTMLAttributes, forwardRef } from 'react'
+import { Loader2 } from 'lucide-react'
+
+type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'success'
+type Size = 'md' | 'lg' | 'sm'
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant
+  size?: Size
+  loading?: boolean
+  fullWidth?: boolean
+}
+
+const variantClasses: Record<Variant, string> = {
+  primary: 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-700',
+  secondary: 'bg-slate-100 text-slate-900 hover:bg-slate-200 active:bg-slate-200',
+  danger: 'bg-loss-600 text-white hover:bg-loss-700 active:bg-loss-700',
+  success: 'bg-profit-600 text-white hover:bg-profit-700 active:bg-profit-700',
+  ghost: 'bg-transparent text-slate-700 hover:bg-slate-100 active:bg-slate-100',
+}
+
+const sizeClasses: Record<Size, string> = {
+  sm: 'px-3 py-2 text-sm rounded-lg',
+  md: 'px-4 py-3 text-base rounded-xl',
+  lg: 'px-5 py-4 text-lg rounded-2xl',
+}
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = 'primary', size = 'md', loading, fullWidth, disabled, children, ...props },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      disabled={disabled || loading}
+      className={clsx(
+        'inline-flex items-center justify-center gap-2 font-semibold transition-colors duration-150',
+        'disabled:cursor-not-allowed disabled:opacity-60',
+        'touch-manipulation select-none',
+        variantClasses[variant],
+        sizeClasses[size],
+        fullWidth && 'w-full',
+        className,
+      )}
+      {...props}
+    >
+      {loading && <Loader2 className="h-5 w-5 animate-spin" aria-hidden />}
+      {children}
+    </button>
+  )
+})
+</file>
+
+<file path="src/components/ui/Card.tsx">
+import clsx from 'clsx'
+import type { HTMLAttributes } from 'react'
+
+export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={clsx('rounded-2xl border border-slate-200 bg-white shadow-sm', className)}
+      {...props}
+    />
+  )
+}
+</file>
+
+<file path="src/components/ui/ConfirmDialog.tsx">
+import { AlertTriangle } from 'lucide-react'
+import { Button } from './Button'
+
+interface ConfirmDialogProps {
+  open: boolean
+  title: string
+  message: string
+  confirmLabel?: string
+  loading?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel = 'Delete',
+  loading,
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close"
+        className="absolute inset-0 bg-slate-900/50"
+        onClick={onCancel}
+      />
+      <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+        <div className="mb-3 flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-loss-50">
+            <AlertTriangle className="h-5 w-5 text-loss-600" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+        </div>
+        <p className="mb-5 text-sm text-slate-600">{message}</p>
+        <div className="flex gap-3">
+          <Button variant="secondary" fullWidth onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+          <Button variant="danger" fullWidth onClick={onConfirm} loading={loading}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/ui/EmptyState.tsx">
+import type { LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
+
+interface EmptyStateProps {
+  icon: LucideIcon
+  title: string
+  description?: string
+  action?: ReactNode
+}
+
+export function EmptyState({ icon: Icon, title, description, action }: EmptyStateProps) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 px-6 py-12 text-center">
+      <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
+        <Icon className="h-7 w-7 text-slate-400" />
+      </div>
+      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+      {description && <p className="mt-1 max-w-xs text-sm text-slate-500">{description}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/ui/ErrorState.tsx">
+import { AlertCircle, RefreshCw } from 'lucide-react'
+import { Button } from './Button'
+
+interface ErrorStateProps {
+  message: string
+  onRetry?: () => void
+}
+
+export function ErrorState({ message, onRetry }: ErrorStateProps) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-loss-100 bg-loss-50 px-6 py-10 text-center">
+      <AlertCircle className="h-8 w-8 text-loss-600" />
+      <p className="text-sm font-medium text-loss-700">{message}</p>
+      {onRetry && (
+        <Button variant="danger" size="sm" onClick={onRetry}>
+          <RefreshCw className="h-4 w-4" />
+          Try again
+        </Button>
+      )}
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/ui/Input.tsx">
+import clsx from 'clsx'
+import { forwardRef, type InputHTMLAttributes } from 'react'
+
+interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  label?: string
+  error?: string
+  hint?: string
+  prefix?: string
+}
+
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  { className, label, error, hint, prefix, id, ...props },
+  ref,
+) {
+  const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
+
+  return (
+    <div className="w-full">
+      {label && (
+        <label htmlFor={inputId} className="mb-1.5 block text-sm font-medium text-slate-700">
+          {label}
+        </label>
+      )}
+      <div className="relative">
+        {prefix && (
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-semibold text-slate-400">
+            {prefix}
+          </span>
+        )}
+        <input
+          ref={ref}
+          id={inputId}
+          className={clsx(
+            'w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-lg text-slate-900',
+            'placeholder:text-slate-400',
+            'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100',
+            error && 'border-loss-500 focus:border-loss-500 focus:ring-loss-100',
+            prefix && 'pl-9',
+            className,
+          )}
+          {...props}
+        />
+      </div>
+      {error && <p className="mt-1.5 text-sm font-medium text-loss-600">{error}</p>}
+      {!error && hint && <p className="mt-1.5 text-sm text-slate-500">{hint}</p>}
+    </div>
+  )
+})
+</file>
+
+<file path="src/components/ui/LoadingSpinner.tsx">
+import { Loader2 } from 'lucide-react'
+import clsx from 'clsx'
+
+export function LoadingSpinner({ className, label }: { className?: string; label?: string }) {
+  return (
+    <div className={clsx('flex flex-col items-center justify-center gap-2 py-10', className)}>
+      <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
+      {label && <p className="text-sm text-slate-500">{label}</p>}
+    </div>
+  )
+}
+</file>
+
+<file path="src/components/ui/Select.tsx">
+import clsx from 'clsx'
+import { forwardRef, type SelectHTMLAttributes } from 'react'
+import { ChevronDown } from 'lucide-react'
+
+interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  label?: string
+  error?: string
+}
+
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
+  { className, label, error, id, children, ...props },
+  ref,
+) {
+  const selectId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
+
+  return (
+    <div className="w-full">
+      {label && (
+        <label htmlFor={selectId} className="mb-1.5 block text-sm font-medium text-slate-700">
+          {label}
+        </label>
+      )}
+      <div className="relative">
+        <select
+          ref={ref}
+          id={selectId}
+          className={clsx(
+            'w-full appearance-none rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-lg text-slate-900',
+            'focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100',
+            error && 'border-loss-500 focus:border-loss-500 focus:ring-loss-100',
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </select>
+        <ChevronDown
+          className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+          aria-hidden
+        />
+      </div>
+      {error && <p className="mt-1.5 text-sm font-medium text-loss-600">{error}</p>}
+    </div>
+  )
+})
+</file>
+
+<file path="src/components/ui/Sheet.tsx">
+import { type ReactNode, useEffect } from 'react'
+import { X } from 'lucide-react'
+
+interface SheetProps {
+  open: boolean
+  onClose: () => void
+  title: string
+  children: ReactNode
+}
+
+/** Bottom sheet on mobile, centered modal on desktop. Used for all quick-add forms. */
+export function Sheet({ open, onClose, title, children }: SheetProps) {
+  useEffect(() => {
+    if (!open) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [open])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+      <button
+        type="button"
+        aria-label="Close"
+        className="absolute inset-0 bg-slate-900/50 backdrop-blur-[1px]"
+        onClick={onClose}
+      />
+      <div className="relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:max-w-md sm:rounded-3xl safe-bottom animate-in">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="src/context/AuthContext.tsx">
+import type { Session, User } from '@supabase/supabase-js'
+import { createContext, type ReactNode, useContext, useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+
+interface AuthContextValue {
+  user: User | null
+  session: Session | null
+  loading: boolean
+}
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        setSession(data.session)
+        setLoading(false)
+      })
+      .catch(() => {
+        // Network/config failure (e.g. unreachable Supabase project) — fall
+        // back to a signed-out state instead of an infinite loading spinner.
+        setSession(null)
+        setLoading(false)
+      })
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession)
+      setLoading(false)
+    })
+
+    return () => subscription.subscription.unsubscribe()
+  }, [])
+
+  return (
+    <AuthContext.Provider value={{ user: session?.user ?? null, session, loading }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
+  return ctx
+}
+</file>
+
+<file path="src/hooks/useFinancialData.ts">
+import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/context/AuthContext'
+import { fetchExpenses } from '@/services/expenses.service'
+import { fetchPetrolEntries } from '@/services/petrol.service'
+import { fetchEarnings } from '@/services/earnings.service'
+import type { Earning, Expense, PetrolEntry } from '@/types'
+
+export interface FinancialData {
+  earnings: Earning[]
+  petrolEntries: PetrolEntry[]
+  expenses: Expense[]
+  loading: boolean
+  error: string | null
+  refresh: () => Promise<void>
+}
+
+/**
+ * Loads earnings, petrol entries, and expenses for the current user within an
+ * optional date range. This is the single data-fetching hook every page
+ * (Dashboard, History, Reports) builds on, so we only ever hit the DB once
+ * per range change instead of duplicating queries across components.
+ */
+export function useFinancialData(start?: string, end?: string): FinancialData {
+  const { user } = useAuth()
+  const [earnings, setEarnings] = useState<Earning[]>([])
+  const [petrolEntries, setPetrolEntries] = useState<PetrolEntry[]>([])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    if (!user) {
+      setEarnings([])
+      setPetrolEntries([])
+      setExpenses([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const [earningsData, petrolData, expensesData] = await Promise.all([
+        fetchEarnings(user.id, start, end),
+        fetchPetrolEntries(user.id, start, end),
+        fetchExpenses(user.id, start, end),
+      ])
+      setEarnings(earningsData)
+      setPetrolEntries(petrolData)
+      setExpenses(expensesData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load data')
+    } finally {
+      setLoading(false)
+    }
+  }, [user, start, end])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  return { earnings, petrolEntries, expenses, loading, error, refresh }
+}
+</file>
+
+<file path="src/hooks/useProfile.ts">
+import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/context/AuthContext'
+import { fetchProfile } from '@/services/profile.service'
+import type { Profile } from '@/types'
+
+export function useProfile() {
+  const { user } = useAuth()
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const refresh = useCallback(async () => {
+    if (!user) {
+      setProfile(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    try {
+      const data = await fetchProfile(user.id)
+      setProfile(data)
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  return { profile, loading, refresh }
+}
+</file>
+
+<file path="src/layouts/AppLayout.tsx">
+import { Outlet } from 'react-router-dom'
+import { BottomNav } from '@/components/navigation/BottomNav'
+import { Sidebar } from '@/components/navigation/Sidebar'
+
+export function AppLayout() {
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Sidebar />
+      <main className="mx-auto max-w-2xl px-4 pb-24 pt-6 md:ml-64 md:max-w-3xl md:px-8 md:pb-10">
+        <Outlet />
+      </main>
+      <BottomNav />
+    </div>
+  )
+}
+</file>
+
+<file path="src/lib/supabase.ts">
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+
+/** True once real credentials are present in .env — see .env.example. */
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
+
+if (!isSupabaseConfigured) {
+  // eslint-disable-next-line no-console
+  console.error(
+    'Missing Supabase environment variables. Copy .env.example to .env and fill in ' +
+      'VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY from your Supabase project settings.',
+  )
+}
+
+/**
+ * Client-side Supabase client using the public anon key only.
+ * The anon key is safe to expose in the frontend — it relies entirely on
+ * Row Level Security policies (see supabase/schema.sql) to keep each user's
+ * data private. The service-role key must NEVER be used here.
+ *
+ * Falls back to a placeholder URL when unconfigured so `createClient` never
+ * throws at import time (it requires a well-formed URL) — this lets the app
+ * boot and show a helpful setup screen instead of a blank white crash.
+ */
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-anon-key',
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+    },
+  },
+)
+</file>
+
+<file path="src/pages/Add.tsx">
+import { useState } from 'react'
+import { Fuel, ReceiptText, TrendingUp } from 'lucide-react'
+import { Sheet } from '@/components/ui/Sheet'
+import { AddEarningForm } from '@/components/forms/AddEarningForm'
+import { AddPetrolForm } from '@/components/forms/AddPetrolForm'
+import { AddExpenseForm } from '@/components/forms/AddExpenseForm'
+
+type ActiveForm = 'earning' | 'petrol' | 'expense' | null
+
+const choices = [
+  {
+    key: 'earning' as const,
+    title: 'Add Earning',
+    description: 'Log money you earned today',
+    icon: TrendingUp,
+    iconBg: 'bg-profit-50 text-profit-600',
+  },
+  {
+    key: 'petrol' as const,
+    title: 'Add Petrol',
+    description: 'Log fuel expense',
+    icon: Fuel,
+    iconBg: 'bg-loss-50 text-loss-600',
+  },
+  {
+    key: 'expense' as const,
+    title: 'Add Expense',
+    description: 'Food, maintenance, parking & more',
+    icon: ReceiptText,
+    iconBg: 'bg-amber-50 text-amber-600',
+  },
+]
+
+export function Add() {
+  const [activeForm, setActiveForm] = useState<ActiveForm>(null)
+
+  function close() {
+    setActiveForm(null)
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Add Transaction</h1>
+        <p className="mt-1 text-sm text-slate-500">Takes just a few seconds</p>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {choices.map(({ key, title, description, icon: Icon, iconBg }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveForm(key)}
+            className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-transform active:scale-[0.98]"
+          >
+            <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+              <Icon className="h-6 w-6" />
+            </span>
+            <span className="flex-1">
+              <span className="block text-base font-semibold text-slate-900">{title}</span>
+              <span className="block text-sm text-slate-500">{description}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <Sheet open={activeForm === 'earning'} onClose={close} title="Add Earning">
+        <AddEarningForm onSuccess={close} />
+      </Sheet>
+      <Sheet open={activeForm === 'petrol'} onClose={close} title="Add Petrol">
+        <AddPetrolForm onSuccess={close} />
+      </Sheet>
+      <Sheet open={activeForm === 'expense'} onClose={close} title="Add Expense">
+        <AddExpenseForm onSuccess={close} />
+      </Sheet>
+    </div>
+  )
+}
+</file>
+
+<file path="src/pages/ForgotPassword.tsx">
+import { type FormEvent, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { AuthLayout } from '@/layouts/AuthLayout'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { sendPasswordResetEmail } from '@/services/auth.service'
+
+export function ForgotPassword() {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [sent, setSent] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await sendPasswordResetEmail(email)
+      setSent(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send reset email')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <AuthLayout title="Reset Password" subtitle="We'll email you a reset link">
+      {sent ? (
+        <div className="text-center">
+          <p className="text-sm text-slate-600">
+            Check <span className="font-semibold">{email}</span> for a password reset link.
+          </p>
+          <Link to="/login" className="mt-4 inline-block text-sm font-semibold text-brand-600">
+            Back to login
+          </Link>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input
+            label="Email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          {error && <p className="text-sm font-medium text-loss-600">{error}</p>}
+          <Button type="submit" fullWidth loading={loading}>
+            Send Reset Link
+          </Button>
+          <Link to="/login" className="text-center text-sm font-medium text-brand-600">
+            Back to login
+          </Link>
+        </form>
+      )}
+    </AuthLayout>
+  )
+}
+</file>
+
+<file path="src/pages/History.tsx">
+import { useMemo, useState } from 'react'
+import toast from 'react-hot-toast'
+import { useFinancialData } from '@/hooks/useFinancialData'
+import { TransactionList } from '@/components/transactions/TransactionList'
+import { TransactionFilters, emptyFilters, type TransactionFilterState } from '@/components/transactions/TransactionFilters'
+import { Sheet } from '@/components/ui/Sheet'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { ErrorState } from '@/components/ui/ErrorState'
+import { AddEarningForm } from '@/components/forms/AddEarningForm'
+import { AddPetrolForm } from '@/components/forms/AddPetrolForm'
+import { AddExpenseForm } from '@/components/forms/AddExpenseForm'
+import { buildTransactionList } from '@/utils/calculations'
+import { deleteEarning } from '@/services/earnings.service'
+import { deletePetrolEntry } from '@/services/petrol.service'
+import { deleteExpense } from '@/services/expenses.service'
+import type { Earning, Expense, PetrolEntry, Transaction } from '@/types'
+
+export function History() {
+  const { earnings, petrolEntries, expenses, loading, error, refresh } = useFinancialData()
+  const [filters, setFilters] = useState<TransactionFilterState>(emptyFilters)
+  const [editing, setEditing] = useState<Transaction | null>(null)
+  const [deleting, setDeleting] = useState<Transaction | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const allTransactions = useMemo(
+    () => buildTransactionList(earnings, petrolEntries, expenses),
+    [earnings, petrolEntries, expenses],
+  )
+
+  const filtered = useMemo(() => {
+    return allTransactions.filter((t) => {
+      if (filters.type !== 'all' && t.type !== filters.type) return false
+      if (filters.category !== 'all' && t.category !== filters.category) return false
+      if (filters.dateFrom && t.date < filters.dateFrom) return false
+      if (filters.dateTo && t.date > filters.dateTo) return false
+      if (filters.search.trim()) {
+        const q = filters.search.trim().toLowerCase()
+        const haystack = `${t.description} ${t.note ?? ''}`.toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      return true
+    })
+  }, [allTransactions, filters])
+
+  async function handleDelete() {
+    if (!deleting) return
+    setDeleteLoading(true)
+    try {
+      if (deleting.type === 'earning') await deleteEarning(deleting.id)
+      if (deleting.type === 'petrol') await deletePetrolEntry(deleting.id)
+      if (deleting.type === 'expense') await deleteExpense(deleting.id)
+      toast.success('Transaction deleted')
+      setDeleting(null)
+      refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  function handleEditSuccess() {
+    setEditing(null)
+    refresh()
+  }
+
+  if (loading) return <LoadingSpinner label="Loading history..." />
+  if (error) return <ErrorState message={error} onRetry={refresh} />
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">History</h1>
+        <p className="mt-1 text-sm text-slate-500">{filtered.length} transactions</p>
+      </div>
+
+      <TransactionFilters filters={filters} onChange={setFilters} />
+
+      <TransactionList transactions={filtered} onEdit={setEditing} onDelete={setDeleting} />
+
+      <Sheet open={editing?.type === 'earning'} onClose={() => setEditing(null)} title="Edit Earning">
+        {editing?.type === 'earning' && (
+          <AddEarningForm initial={editing.raw as Earning} onSuccess={handleEditSuccess} />
+        )}
+      </Sheet>
+      <Sheet open={editing?.type === 'petrol'} onClose={() => setEditing(null)} title="Edit Petrol">
+        {editing?.type === 'petrol' && (
+          <AddPetrolForm initial={editing.raw as PetrolEntry} onSuccess={handleEditSuccess} />
+        )}
+      </Sheet>
+      <Sheet open={editing?.type === 'expense'} onClose={() => setEditing(null)} title="Edit Expense">
+        {editing?.type === 'expense' && (
+          <AddExpenseForm initial={editing.raw as Expense} onSuccess={handleEditSuccess} />
+        )}
+      </Sheet>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete transaction?"
+        message="This action cannot be undone. This transaction will be permanently removed."
+        loading={deleteLoading}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleting(null)}
+      />
+    </div>
+  )
+}
+</file>
+
+<file path="src/pages/Profile.tsx">
+import toast from 'react-hot-toast'
+import { LogOut } from 'lucide-react'
+import { useAuth } from '@/context/AuthContext'
+import { useProfile } from '@/hooks/useProfile'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { ImageUploadField } from '@/components/profile/ImageUploadField'
+import { QRDisplay } from '@/components/profile/QRDisplay'
+import { ProfileForm } from '@/components/profile/ProfileForm'
+import { NotificationSettings } from '@/components/profile/NotificationSettings'
+import { upsertProfile, uploadAvatarImage, uploadQrImage } from '@/services/profile.service'
+import { signOut } from '@/services/auth.service'
+
+export function Profile() {
+  const { user } = useAuth()
+  const { profile, loading, refresh } = useProfile()
+
+  if (loading) return <LoadingSpinner label="Loading profile..." />
+  if (!user) return null
+
+  async function handleSaveProfile(input: { name: string; mobile: string; upi_id: string }) {
+    await upsertProfile(user!.id, input)
+    await refresh()
+  }
+
+  async function handleAvatarUpload(file: File) {
+    const url = await uploadAvatarImage(user!.id, file)
+    await upsertProfile(user!.id, { avatar_url: url })
+    await refresh()
+    toast.success('Photo updated')
+  }
+
+  async function handleQrUpload(file: File) {
+    const url = await uploadQrImage(user!.id, file)
+    await upsertProfile(user!.id, { qr_image_url: url })
+    await refresh()
+    toast.success('QR code updated')
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Profile</h1>
+        <p className="mt-1 text-sm text-slate-500">{user.email}</p>
+      </div>
+
+      <Card className="flex flex-col items-center gap-4 p-6">
+        <ImageUploadField label="Profile Photo" imageUrl={profile?.avatar_url ?? null} onUpload={handleAvatarUpload} />
+        <div className="w-full">
+          <ProfileForm profile={profile} onSave={handleSaveProfile} />
+        </div>
+      </Card>
+
+      <NotificationSettings profile={profile} onChange={refresh} />
+
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">UPI QR Code</h2>
+        <div className="flex flex-col gap-4">
+          <QRDisplay qrImageUrl={profile?.qr_image_url ?? null} upiId={profile?.upi_id ?? null} />
+          <Card className="flex items-center justify-center p-4">
+            <ImageUploadField
+              label="Upload / Change QR Code"
+              imageUrl={profile?.qr_image_url ?? null}
+              shape="square"
+              onUpload={handleQrUpload}
+            />
+          </Card>
+        </div>
+      </div>
+
+      <Button variant="secondary" fullWidth onClick={() => signOut()} className="md:hidden">
+        <LogOut className="h-5 w-5" />
+        Log Out
+      </Button>
+    </div>
+  )
+}
+</file>
+
+<file path="src/pages/Reports.tsx">
+import { useMemo, useState } from 'react'
+import { DateRangeSelector } from '@/components/reports/DateRangeSelector'
+import { ReportSummary } from '@/components/reports/ReportSummary'
+import { GetBillButton } from '@/components/reports/GetBillButton'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { ErrorState } from '@/components/ui/ErrorState'
+import { useFinancialData } from '@/hooks/useFinancialData'
+import { useAuth } from '@/context/AuthContext'
+import { useProfile } from '@/hooks/useProfile'
+import { buildFinancialSummary } from '@/utils/calculations'
+import { resolvePresetRange, todayISO, type ReportPreset } from '@/utils/date'
+
+export function Reports() {
+  const { user } = useAuth()
+  const { profile } = useProfile()
+  const [preset, setPreset] = useState<ReportPreset>('month')
+  const [customRange, setCustomRange] = useState({ start: todayISO(), end: todayISO() })
+
+  const range = preset === 'custom' ? customRange : resolvePresetRange(preset)
+  const { earnings, petrolEntries, expenses, loading, error, refresh } = useFinancialData(range.start, range.end)
+
+  const summary = useMemo(
+    () => buildFinancialSummary(earnings, petrolEntries, expenses),
+    [earnings, petrolEntries, expenses],
+  )
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
+        <p className="mt-1 text-sm text-slate-500">Analyze your earnings and expenses by period</p>
+      </div>
+
+      <DateRangeSelector
+        preset={preset}
+        start={customRange.start}
+        end={customRange.end}
+        onPresetChange={setPreset}
+        onCustomChange={(start, end) => {
+          setPreset('custom')
+          setCustomRange({ start, end })
+        }}
+      />
+
+      {loading ? (
+        <LoadingSpinner label="Crunching numbers..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={refresh} />
+      ) : (
+        <ReportSummary summary={summary} />
+      )}
+
+      {user && <GetBillButton userId={user.id} userName={profile?.name || user.email || 'Rapido Driver'} />}
+    </div>
+  )
+}
+</file>
+
+<file path="src/pages/ResetPassword.tsx">
+import { type FormEvent, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { AuthLayout } from '@/layouts/AuthLayout'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { updatePassword } from '@/services/auth.service'
+
+/** Landed on via the password reset email link (Supabase attaches a recovery session). */
+export function ResetPassword() {
+  const navigate = useNavigate()
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
+    setLoading(true)
+    try {
+      await updatePassword(password)
+      toast.success('Password updated. Please log in again.')
+      navigate('/login', { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update password')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <AuthLayout title="Set New Password" subtitle="Choose a new password for your account">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Input
+          label="New Password"
+          type="password"
+          autoComplete="new-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <Input
+          label="Confirm New Password"
+          type="password"
+          autoComplete="new-password"
+          required
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+        {error && <p className="text-sm font-medium text-loss-600">{error}</p>}
+        <Button type="submit" fullWidth loading={loading}>
+          Update Password
+        </Button>
+      </form>
+    </AuthLayout>
+  )
+}
+</file>
+
+<file path="src/pages/SetupRequired.tsx">
+import { AlertTriangle } from 'lucide-react'
+
+/** Shown instead of the app when VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are missing. */
+export function SetupRequired() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
+      <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
+        <div className="mb-3 flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50">
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
+          </div>
+          <h1 className="text-lg font-bold text-slate-900">Supabase setup required</h1>
+        </div>
+        <p className="text-sm text-slate-600">
+          This app needs Supabase credentials to run. Create a{' '}
+          <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">.env</code> file in the project root
+          (copy from <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">.env.example</code>) and set:
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+{`VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key`}
+        </pre>
+        <p className="mt-3 text-sm text-slate-600">
+          Find these under Supabase Dashboard → Project Settings → API, then restart the dev server.
+        </p>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="src/services/auth.service.ts">
+import { supabase } from '@/lib/supabase'
+
+export async function signUp(email: string, password: string) {
+  const { data, error } = await supabase.auth.signUp({ email, password })
+  if (error) throw error
+  return data
+}
+
+export async function signIn(email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) throw error
+  return data
+}
+
+export async function signOut() {
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
+}
+
+export async function sendPasswordResetEmail(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  })
+  if (error) throw error
+}
+
+export async function updatePassword(newPassword: string) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) throw error
+}
+</file>
+
+<file path="src/services/earnings.service.ts">
+import { supabase } from '@/lib/supabase'
+import type { Earning } from '@/types'
+
+export interface EarningInput {
+  amount: number
+  date: string
+  note?: string | null
+}
+
+export async function fetchEarnings(userId: string, start?: string, end?: string) {
+  let query = supabase
+    .from('earnings')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+
+  if (start) query = query.gte('date', start)
+  if (end) query = query.lte('date', end)
+
+  const { data, error } = await query
+  if (error) throw error
+  return (data ?? []) as Earning[]
+}
+
+export async function createEarning(userId: string, input: EarningInput) {
+  const { data, error } = await supabase
+    .from('earnings')
+    .insert({ user_id: userId, amount: input.amount, date: input.date, note: input.note ?? null })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Earning
+}
+
+export async function updateEarning(id: string, input: Partial<EarningInput>) {
+  const { data, error } = await supabase
+    .from('earnings')
+    .update({ ...input, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Earning
+}
+
+export async function deleteEarning(id: string) {
+  const { error } = await supabase.from('earnings').delete().eq('id', id)
+  if (error) throw error
+}
+</file>
+
+<file path="src/services/expenses.service.ts">
+import { supabase } from '@/lib/supabase'
+import type { Expense } from '@/types'
+
+export interface ExpenseInput {
+  amount: number
+  category: string
+  date: string
+  note?: string | null
+}
+
+export async function fetchExpenses(userId: string, start?: string, end?: string) {
+  let query = supabase
+    .from('expenses')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+
+  if (start) query = query.gte('date', start)
+  if (end) query = query.lte('date', end)
+
+  const { data, error } = await query
+  if (error) throw error
+  return (data ?? []) as Expense[]
+}
+
+export async function createExpense(userId: string, input: ExpenseInput) {
+  const { data, error } = await supabase
+    .from('expenses')
+    .insert({
+      user_id: userId,
+      amount: input.amount,
+      category: input.category,
+      date: input.date,
+      note: input.note ?? null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Expense
+}
+
+export async function updateExpense(id: string, input: Partial<ExpenseInput>) {
+  const { data, error } = await supabase
+    .from('expenses')
+    .update({ ...input, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Expense
+}
+
+export async function deleteExpense(id: string) {
+  const { error } = await supabase.from('expenses').delete().eq('id', id)
+  if (error) throw error
+}
+
+const CUSTOM_CATEGORY_STORAGE_KEY = 'rapido_custom_expense_categories'
+
+/** Custom categories are kept client-side (localStorage) — no schema change needed for v1. */
+export function getCustomCategories(): string[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_CATEGORY_STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function addCustomCategory(category: string) {
+  const existing = getCustomCategories()
+  if (!existing.includes(category)) {
+    localStorage.setItem(CUSTOM_CATEGORY_STORAGE_KEY, JSON.stringify([...existing, category]))
+  }
+}
+</file>
+
+<file path="src/services/petrol.service.ts">
+import { supabase } from '@/lib/supabase'
+import type { PetrolEntry } from '@/types'
+
+export interface PetrolInput {
+  amount: number
+  date: string
+  litres?: number | null
+  price_per_litre?: number | null
+  petrol_station?: string | null
+  note?: string | null
+}
+
+export async function fetchPetrolEntries(userId: string, start?: string, end?: string) {
+  let query = supabase
+    .from('petrol_entries')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+
+  if (start) query = query.gte('date', start)
+  if (end) query = query.lte('date', end)
+
+  const { data, error } = await query
+  if (error) throw error
+  return (data ?? []) as PetrolEntry[]
+}
+
+export async function createPetrolEntry(userId: string, input: PetrolInput) {
+  const { data, error } = await supabase
+    .from('petrol_entries')
+    .insert({
+      user_id: userId,
+      amount: input.amount,
+      date: input.date,
+      litres: input.litres ?? null,
+      price_per_litre: input.price_per_litre ?? null,
+      petrol_station: input.petrol_station ?? null,
+      note: input.note ?? null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as PetrolEntry
+}
+
+export async function updatePetrolEntry(id: string, input: Partial<PetrolInput>) {
+  const { data, error } = await supabase
+    .from('petrol_entries')
+    .update({ ...input, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as PetrolEntry
+}
+
+export async function deletePetrolEntry(id: string) {
+  const { error } = await supabase.from('petrol_entries').delete().eq('id', id)
+  if (error) throw error
+}
+</file>
+
+<file path="src/services/profile.service.ts">
+import { supabase } from '@/lib/supabase'
+import type { Profile } from '@/types'
+
+export interface ProfileInput {
+  name?: string | null
+  mobile?: string | null
+  upi_id?: string | null
+  qr_image_url?: string | null
+  avatar_url?: string | null
+  daily_reminder_enabled?: boolean
+  timezone?: string
+}
+
+export async function fetchProfile(userId: string): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) throw error
+  return data as Profile | null
+}
+
+/** Creates the profile row on first login, or updates it if it already exists. */
+export async function upsertProfile(userId: string, input: ProfileInput): Promise<Profile> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert(
+      { user_id: userId, ...input, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    )
+    .select()
+    .single()
+  if (error) throw error
+  return data as Profile
+}
+
+const QR_BUCKET = 'qr-codes'
+const AVATAR_BUCKET = 'avatars'
+
+async function uploadImage(bucket: string, userId: string, file: File): Promise<string> {
+  const extension = file.name.split('.').pop() ?? 'png'
+  const path = `${userId}/${bucket}-${Date.now()}.${extension}`
+
+  const { error: uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, { upsert: true, cacheControl: '3600' })
+  if (uploadError) throw uploadError
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path)
+  return data.publicUrl
+}
+
+export function uploadQrImage(userId: string, file: File) {
+  return uploadImage(QR_BUCKET, userId, file)
+}
+
+export function uploadAvatarImage(userId: string, file: File) {
+  return uploadImage(AVATAR_BUCKET, userId, file)
+}
+</file>
+
+<file path="src/utils/currency.ts">
+/** Indian Rupee currency formatting utilities (₹1,250 / ₹1,25,000 style). */
+
+const inrFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0,
+})
+
+const inrFormatterDecimal = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+})
+
+/** Formats a number as ₹1,25,000 (no decimals — amounts are stored as whole rupees). */
+export function formatINR(amount: number): string {
+  return inrFormatter.format(Math.round(amount))
+}
+
+/** Formats a number as ₹1,25,000.00 with decimals, used for per-litre pricing etc. */
+export function formatINRDecimal(amount: number): string {
+  return inrFormatterDecimal.format(amount)
+}
+
+/** Formats a signed amount, e.g. +₹850 / -₹250, for transaction lists. */
+export function formatSignedINR(amount: number, sign: '+' | '-'): string {
+  return `${sign}${formatINR(Math.abs(amount))}`
+}
+
+const inrGroupingFormatter = new Intl.NumberFormat('en-IN', {
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0,
+})
+
+/**
+ * PDF-safe currency formatting. jsPDF's standard fonts (Helvetica etc.) only
+ * support WinAnsi/Latin-1 encoding and cannot render the ₹ (U+20B9) glyph —
+ * it silently renders as a broken superscript character instead. PDF reports
+ * use "Rs." in place of ₹ for reliable rendering with no extra font embedding.
+ */
+export function formatINRForPdf(amount: number): string {
+  return `Rs. ${inrGroupingFormatter.format(Math.round(amount))}`
+}
+</file>
+
+<file path="src/utils/date.ts">
+import {
+  endOfMonth,
+  endOfWeek,
+  format,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+  subDays,
+} from 'date-fns'
+
+/**
+ * All dates in this app are stored and compared as plain 'YYYY-MM-DD' strings
+ * (local calendar dates), never as full timestamps/UTC — this avoids
+ * timezone-shift bugs where "today" could roll to yesterday/tomorrow.
+ */
+
+/** Today's date as YYYY-MM-DD in the user's local timezone. */
+export function todayISO(): string {
+  return format(new Date(), 'yyyy-MM-dd')
+}
+
+/** Parses a YYYY-MM-DD string into a local Date object (midnight local time). */
+export function parseLocalDate(isoDate: string): Date {
+  return parseISO(isoDate)
+}
+
+/** Formats a YYYY-MM-DD string for display, e.g. "11 Sep 2026". */
+export function formatDisplayDate(isoDate: string): string {
+  return format(parseLocalDate(isoDate), 'dd MMM yyyy')
+}
+
+/** Formats a YYYY-MM-DD string for compact display, e.g. "11 Sep". */
+export function formatShortDate(isoDate: string): string {
+  return format(parseLocalDate(isoDate), 'dd MMM')
+}
+
+export type ReportPreset = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+
+export interface DateRange {
+  start: string
+  end: string
+}
+
+/** Resolves a report preset into a concrete { start, end } ISO date range. */
+export function resolvePresetRange(preset: ReportPreset): DateRange {
+  const now = new Date()
+  switch (preset) {
+    case 'today': {
+      const d = format(now, 'yyyy-MM-dd')
+      return { start: d, end: d }
+    }
+    case 'yesterday': {
+      const d = format(subDays(now, 1), 'yyyy-MM-dd')
+      return { start: d, end: d }
+    }
+    case 'week': {
+      return {
+        start: format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+        end: format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+      }
+    }
+    case 'month': {
+      return {
+        start: format(startOfMonth(now), 'yyyy-MM-dd'),
+        end: format(endOfMonth(now), 'yyyy-MM-dd'),
+      }
+    }
+    case 'custom':
+    default:
+      return { start: format(now, 'yyyy-MM-dd'), end: format(now, 'yyyy-MM-dd') }
+  }
+}
+
+/** Current month's date range, used by the dashboard. */
+export function currentMonthRange(): DateRange {
+  const now = new Date()
+  return {
+    start: format(startOfMonth(now), 'yyyy-MM-dd'),
+    end: format(endOfMonth(now), 'yyyy-MM-dd'),
+  }
+}
+
+/** Time-of-day greeting with a matching emoji: "Good morning ☀️" / "Good afternoon 🌤️" / "Good evening 🌆". */
+export function timeOfDayGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning ☀️'
+  if (hour < 17) return 'Good afternoon 🌤️'
+  return 'Good evening 🌆'
+}
+
+/** Builds an array of all YYYY-MM-DD dates between start and end (inclusive). */
+export function eachDateInRange(start: string, end: string): string[] {
+  const startDate = parseLocalDate(start)
+  const endDate = parseLocalDate(end)
+  const dates: string[] = []
+  const cursor = new Date(startDate)
+  while (cursor <= endDate) {
+    dates.push(format(cursor, 'yyyy-MM-dd'))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return dates
+}
+</file>
+
+<file path="src/utils/validation.ts">
+export interface ValidationResult {
+  valid: boolean
+  error?: string
+}
+
+/** Amount must be a positive, finite number (greater than 0). */
+export function validateAmount(value: string | number): ValidationResult {
+  const amount = typeof value === 'string' ? Number(value) : value
+  if (value === '' || value === null || value === undefined) {
+    return { valid: false, error: 'Amount is required' }
+  }
+  if (Number.isNaN(amount) || !Number.isFinite(amount)) {
+    return { valid: false, error: 'Enter a valid amount' }
+  }
+  if (amount <= 0) {
+    return { valid: false, error: 'Amount must be greater than 0' }
+  }
+  if (amount > 10000000) {
+    return { valid: false, error: 'Amount seems too large' }
+  }
+  return { valid: true }
+}
+
+/** Rejects empty/whitespace-only dates and dates that don't parse. */
+export function validateDate(value: string): ValidationResult {
+  if (!value || !value.trim()) {
+    return { valid: false, error: 'Date is required' }
+  }
+  const isValidFormat = /^\d{4}-\d{2}-\d{2}$/.test(value)
+  if (!isValidFormat) {
+    return { valid: false, error: 'Invalid date format' }
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return { valid: false, error: 'Invalid date' }
+  }
+  return { valid: true }
+}
+
+export function validateRequired(value: string, fieldName: string): ValidationResult {
+  if (!value || !value.trim()) {
+    return { valid: false, error: `${fieldName} is required` }
+  }
+  return { valid: true }
+}
+
+/** Optional positive-number field (litres, price per litre). Empty is allowed. */
+export function validateOptionalPositiveNumber(value: string): ValidationResult {
+  if (!value || !value.trim()) return { valid: true }
+  const num = Number(value)
+  if (Number.isNaN(num) || num < 0) {
+    return { valid: false, error: 'Enter a valid number' }
+  }
+  return { valid: true }
+}
+</file>
+
+<file path="src/App.tsx">
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { AuthProvider } from '@/context/AuthContext'
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
+import { AppLayout } from '@/layouts/AppLayout'
+import { SetupRequired } from '@/pages/SetupRequired'
+import { Login } from '@/pages/Login'
+import { SignUp } from '@/pages/SignUp'
+import { ForgotPassword } from '@/pages/ForgotPassword'
+import { ResetPassword } from '@/pages/ResetPassword'
+import { Dashboard } from '@/pages/Dashboard'
+import { Add } from '@/pages/Add'
+import { History } from '@/pages/History'
+import { Reports } from '@/pages/Reports'
+import { Profile } from '@/pages/Profile'
+
+function App() {
+  if (!isSupabaseConfigured) {
+    return <SetupRequired />
+  }
+
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            duration: 3000,
+            style: { borderRadius: '12px', fontSize: '14px' },
+          }}
+        />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<SignUp />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/add" element={<Add />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/profile" element={<Profile />} />
+          </Route>
+
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  )
+}
+
+export default App
+</file>
+
+<file path="src/index.css">
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Hide number input spinners for cleaner mobile amount fields */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+</file>
+
+<file path="src/main.tsx">
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.tsx'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+</file>
+
+<file path="supabase/schema.sql">
+-- =====================================================================
+-- ProfitGo — Supabase schema
+-- Run this in: Supabase Dashboard -> SQL Editor -> New Query -> Run
+-- Safe to re-run: uses IF NOT EXISTS / CREATE OR REPLACE where possible.
+-- =====================================================================
+
+create extension if not exists "pgcrypto";
+
+-- ---------------------------------------------------------------------
+-- Table: profiles
+-- ---------------------------------------------------------------------
+create table if not exists public.profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users (id) on delete cascade,
+  name text,
+  mobile text,
+  upi_id text,
+  qr_image_url text,
+  avatar_url text,
+  daily_reminder_enabled boolean not null default false,
+  timezone text not null default 'Asia/Kolkata',
+  last_reminder_sent_date date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Columns added after the table's initial release — safe no-ops on a fresh create above.
+alter table public.profiles add column if not exists daily_reminder_enabled boolean not null default false;
+alter table public.profiles add column if not exists timezone text not null default 'Asia/Kolkata';
+alter table public.profiles add column if not exists last_reminder_sent_date date;
+
+create index if not exists idx_profiles_user_id on public.profiles (user_id);
+-- Used by the daily-reminders Edge Function to cheaply find everyone who might be due.
+create index if not exists idx_profiles_daily_reminder_enabled
+  on public.profiles (daily_reminder_enabled)
+  where daily_reminder_enabled = true;
+
+-- ---------------------------------------------------------------------
+-- Table: earnings
+-- ---------------------------------------------------------------------
+create table if not exists public.earnings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  amount numeric(12, 2) not null check (amount > 0),
+  date date not null,
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_earnings_user_id on public.earnings (user_id);
+create index if not exists idx_earnings_user_date on public.earnings (user_id, date desc);
+
+-- ---------------------------------------------------------------------
+-- Table: petrol_entries
+-- ---------------------------------------------------------------------
+create table if not exists public.petrol_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  amount numeric(12, 2) not null check (amount > 0),
+  date date not null,
+  litres numeric(8, 2) check (litres is null or litres >= 0),
+  price_per_litre numeric(8, 2) check (price_per_litre is null or price_per_litre >= 0),
+  petrol_station text,
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_petrol_user_id on public.petrol_entries (user_id);
+create index if not exists idx_petrol_user_date on public.petrol_entries (user_id, date desc);
+
+-- ---------------------------------------------------------------------
+-- Table: expenses
+-- ---------------------------------------------------------------------
+create table if not exists public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  amount numeric(12, 2) not null check (amount > 0),
+  category text not null,
+  date date not null,
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_expenses_user_id on public.expenses (user_id);
+create index if not exists idx_expenses_user_date on public.expenses (user_id, date desc);
+
+-- ---------------------------------------------------------------------
+-- Table: push_subscriptions
+-- One row per browser/device a user has enabled push notifications on.
+-- Written by the client (via the authenticated anon key + RLS below);
+-- read only by the send-daily-reminders Edge Function using the
+-- service-role key, which bypasses RLS entirely and never runs client-side.
+-- ---------------------------------------------------------------------
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  endpoint text not null,
+  p256dh text not null,
+  auth_key text not null,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, endpoint)
+);
+
+create index if not exists idx_push_subscriptions_user_id on public.push_subscriptions (user_id);
+
+-- ---------------------------------------------------------------------
+-- updated_at auto-touch trigger
+-- ---------------------------------------------------------------------
+create or replace function public.set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists set_updated_at on public.profiles;
+create trigger set_updated_at before update on public.profiles
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists set_updated_at on public.earnings;
+create trigger set_updated_at before update on public.earnings
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists set_updated_at on public.petrol_entries;
+create trigger set_updated_at before update on public.petrol_entries
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists set_updated_at on public.expenses;
+create trigger set_updated_at before update on public.expenses
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists set_updated_at on public.push_subscriptions;
+create trigger set_updated_at before update on public.push_subscriptions
+  for each row execute function public.set_updated_at();
+
+-- =====================================================================
+-- Row Level Security
+-- Every table: a user may only SELECT / INSERT / UPDATE / DELETE rows
+-- where user_id matches their own auth.uid(). No cross-user access.
+-- =====================================================================
+
+alter table public.profiles enable row level security;
+alter table public.earnings enable row level security;
+alter table public.petrol_entries enable row level security;
+alter table public.expenses enable row level security;
+alter table public.push_subscriptions enable row level security;
+
+-- profiles policies
+drop policy if exists "profiles_select_own" on public.profiles;
+create policy "profiles_select_own" on public.profiles
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "profiles_insert_own" on public.profiles;
+create policy "profiles_insert_own" on public.profiles
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "profiles_update_own" on public.profiles;
+create policy "profiles_update_own" on public.profiles
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "profiles_delete_own" on public.profiles;
+create policy "profiles_delete_own" on public.profiles
+  for delete using (auth.uid() = user_id);
+
+-- earnings policies
+drop policy if exists "earnings_select_own" on public.earnings;
+create policy "earnings_select_own" on public.earnings
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "earnings_insert_own" on public.earnings;
+create policy "earnings_insert_own" on public.earnings
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "earnings_update_own" on public.earnings;
+create policy "earnings_update_own" on public.earnings
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "earnings_delete_own" on public.earnings;
+create policy "earnings_delete_own" on public.earnings
+  for delete using (auth.uid() = user_id);
+
+-- petrol_entries policies
+drop policy if exists "petrol_select_own" on public.petrol_entries;
+create policy "petrol_select_own" on public.petrol_entries
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "petrol_insert_own" on public.petrol_entries;
+create policy "petrol_insert_own" on public.petrol_entries
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "petrol_update_own" on public.petrol_entries;
+create policy "petrol_update_own" on public.petrol_entries
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "petrol_delete_own" on public.petrol_entries;
+create policy "petrol_delete_own" on public.petrol_entries
+  for delete using (auth.uid() = user_id);
+
+-- expenses policies
+drop policy if exists "expenses_select_own" on public.expenses;
+create policy "expenses_select_own" on public.expenses
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "expenses_insert_own" on public.expenses;
+create policy "expenses_insert_own" on public.expenses
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "expenses_update_own" on public.expenses;
+create policy "expenses_update_own" on public.expenses
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "expenses_delete_own" on public.expenses;
+create policy "expenses_delete_own" on public.expenses
+  for delete using (auth.uid() = user_id);
+
+-- push_subscriptions policies
+-- Note: the send-daily-reminders Edge Function reads this table with the
+-- service_role key, which bypasses RLS entirely — these policies only
+-- govern what the browser (anon key + logged-in user) can do.
+drop policy if exists "push_subscriptions_select_own" on public.push_subscriptions;
+create policy "push_subscriptions_select_own" on public.push_subscriptions
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_insert_own" on public.push_subscriptions;
+create policy "push_subscriptions_insert_own" on public.push_subscriptions
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_update_own" on public.push_subscriptions;
+create policy "push_subscriptions_update_own" on public.push_subscriptions
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_delete_own" on public.push_subscriptions;
+create policy "push_subscriptions_delete_own" on public.push_subscriptions
+  for delete using (auth.uid() = user_id);
+
+-- =====================================================================
+-- Storage buckets for profile photo and UPI QR code images
+-- =====================================================================
+
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('qr-codes', 'qr-codes', true)
+on conflict (id) do nothing;
+
+-- Files are stored under a path prefixed with the owner's user id,
+-- e.g. "<user_id>/avatars-<timestamp>.png", so ownership is enforced by
+-- checking that the first path segment equals auth.uid().
+
+drop policy if exists "avatars_public_read" on storage.objects;
+create policy "avatars_public_read" on storage.objects
+  for select using (bucket_id = 'avatars');
+
+drop policy if exists "avatars_owner_write" on storage.objects;
+create policy "avatars_owner_write" on storage.objects
+  for insert with check (
+    bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "avatars_owner_update" on storage.objects;
+create policy "avatars_owner_update" on storage.objects
+  for update using (
+    bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "avatars_owner_delete" on storage.objects;
+create policy "avatars_owner_delete" on storage.objects
+  for delete using (
+    bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "qr_public_read" on storage.objects;
+create policy "qr_public_read" on storage.objects
+  for select using (bucket_id = 'qr-codes');
+
+drop policy if exists "qr_owner_write" on storage.objects;
+create policy "qr_owner_write" on storage.objects
+  for insert with check (
+    bucket_id = 'qr-codes' and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "qr_owner_update" on storage.objects;
+create policy "qr_owner_update" on storage.objects
+  for update using (
+    bucket_id = 'qr-codes' and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "qr_owner_delete" on storage.objects;
+create policy "qr_owner_delete" on storage.objects
+  for delete using (
+    bucket_id = 'qr-codes' and (storage.foldername(name))[1] = auth.uid()::text
+  );
+</file>
+
+<file path="supabase/seed.sql">
+-- =====================================================================
+-- Sample/dev seed data for Rapido Profit Tracker
+--
+-- Usage:
+--   1. Sign up in the app once so a row exists in auth.users.
+--   2. Find your user id: Supabase Dashboard -> Authentication -> Users.
+--   3. Replace 'YOUR_USER_ID' below with that UUID.
+--   4. Run this file in the Supabase SQL Editor.
+--
+-- Expected totals after seeding (verified in src/utils/calculations.test.ts):
+--   Earnings         = 500 + 750 + 900          = ₹2,150
+--   Petrol           = 200 + 250 + 300           = ₹750
+--   Other Expenses   = 100 + 80                  = ₹180
+--   Total Expenses   = 750 + 180                 = ₹930
+--   Net Profit       = 2150 - 930                = ₹1,220
+-- =====================================================================
+
+insert into public.earnings (user_id, amount, date, note) values
+  ('YOUR_USER_ID', 500, current_date, 'Rapido earning'),
+  ('YOUR_USER_ID', 750, current_date - interval '1 day', 'Rapido earning'),
+  ('YOUR_USER_ID', 900, current_date - interval '2 day', 'Rapido earning');
+
+insert into public.petrol_entries (user_id, amount, date, litres, price_per_litre, petrol_station, note) values
+  ('YOUR_USER_ID', 200, current_date, 2.1, 95, 'HP Petrol Pump', 'Morning petrol'),
+  ('YOUR_USER_ID', 250, current_date - interval '1 day', 2.6, 96, null, null),
+  ('YOUR_USER_ID', 300, current_date - interval '2 day', 3.1, 96.5, null, null);
+
+insert into public.expenses (user_id, amount, category, date, note) values
+  ('YOUR_USER_ID', 100, 'Food', current_date, 'Lunch'),
+  ('YOUR_USER_ID', 80, 'Parking', current_date - interval '1 day', null);
+</file>
+
+<file path=".env.example">
+# Supabase project credentials
+# Get these from: Supabase Dashboard -> Project Settings -> API
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+
+# Web Push VAPID public key (safe to expose client-side — it's the public
+# half of the key pair). Generate a pair with `npx web-push generate-vapid-keys`.
+# The PRIVATE key must never go here — set it as a Supabase Edge Function
+# secret instead (`supabase secrets set VAPID_PRIVATE_KEY=...`). See
+# supabase/functions/send-daily-reminders/index.ts for details.
+VITE_VAPID_PUBLIC_KEY=your-vapid-public-key
+</file>
+
+<file path=".gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+</file>
+
+<file path=".oxlintrc.json">
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  }
+}
+</file>
+
+<file path="postcss.config.js">
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+</file>
+
+<file path="tailwind.config.js">
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        profit: {
+          50: '#f0fdf4',
+          100: '#dcfce7',
+          500: '#22c55e',
+          600: '#16a34a',
+          700: '#15803d',
+        },
+        loss: {
+          50: '#fef2f2',
+          100: '#fee2e2',
+          500: '#ef4444',
+          600: '#dc2626',
+          700: '#b91c1c',
+        },
+        brand: {
+          50: '#eef2ff',
+          100: '#e0e7ff',
+          400: '#818cf8',
+          500: '#6366f1',
+          600: '#4f46e5',
+          700: '#4338ca',
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+    },
+  },
+  plugins: [],
+}
+</file>
+
+<file path="tsconfig.app.json">
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+</file>
+
+<file path="tsconfig.node.json">
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["vite.config.ts"]
+}
+</file>
+
+<file path="vercel.json">
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
+</file>
+
+<file path="public/favicon.svg">
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#4f46e5"/>
+
+  <!-- car: bold solid silhouette, top half -->
+  <g fill="#ffffff">
+    <rect x="20" y="9" width="20" height="10" rx="3"/>
+    <rect x="11" y="17" width="38" height="12" rx="4"/>
+    <circle cx="20" cy="31" r="5"/>
+    <circle cx="44" cy="31" r="5"/>
+  </g>
+
+  <!-- bike: bold outline, bottom half -->
+  <g fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="17" cy="52" r="6.5"/>
+    <circle cx="47" cy="52" r="6.5"/>
+    <path d="M17 52 30 38 47 52"/>
+  </g>
+</svg>
+</file>
+
+<file path="src/components/navigation/Sidebar.tsx">
+import clsx from 'clsx'
+import { NavLink } from 'react-router-dom'
+import { LogOut } from 'lucide-react'
+import { navItems } from './navItems'
+import { signOut } from '@/services/auth.service'
+
+export function Sidebar() {
+  return (
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-slate-200 bg-white p-4 md:flex">
+      <div className="mb-8 flex items-center gap-2 px-2 pt-2">
+        <img src="/favicon.svg" alt="ProfitGo" className="h-9 w-9" />
+        <span className="text-lg font-bold text-slate-900">ProfitGo</span>
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-1">
+        {navItems.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              clsx(
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100',
+              )
+            }
+          >
+            <Icon className="h-5 w-5" />
+            {label}
+          </NavLink>
+        ))}
+      </nav>
+
+      <button
+        type="button"
+        onClick={() => signOut()}
+        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+      >
+        <LogOut className="h-5 w-5" />
+        Log out
+      </button>
+    </aside>
+  )
+}
+</file>
+
+<file path="src/layouts/AuthLayout.tsx">
+import type { ReactNode } from 'react'
+
+export function AuthLayout({
+  children,
+  title,
+  subtitle,
+}: {
+  children: ReactNode
+  title: string
+  subtitle: string
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <img src="/favicon.svg" alt="ProfitGo" className="mb-3 h-12 w-12" />
+          <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+          <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">{children}</div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="src/lib/pdf/generateReportPdf.ts">
+import jsPDF from 'jspdf'
+import { applyPlugin } from 'jspdf-autotable'
+import { formatDisplayDate, formatShortDate } from '@/utils/date'
+import { formatINRForPdf } from '@/utils/currency'
+import { buildFinancialSummary, buildTransactionList } from '@/utils/calculations'
+import type { Earning, Expense, PetrolEntry } from '@/types'
+
+// jspdf-autotable's default export has known interop issues under Vite/esbuild's
+// CJS->ESM conversion (resolves to a non-callable module namespace object), so we
+// use the documented `applyPlugin` + instance-method (`doc.autoTable(...)`) form
+// instead of the free `autoTable(doc, ...)` function form.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+applyPlugin(jsPDF as any)
+
+interface GenerateReportPdfInput {
+  userName: string
+  startDate: string
+  endDate: string
+  earnings: Earning[]
+  petrolEntries: PetrolEntry[]
+  expenses: Expense[]
+}
+
+const INK = '#0f172a'
+const MUTED = '#64748b'
+const PROFIT = '#16a34a'
+const LOSS = '#dc2626'
+
+/**
+ * Builds a professional, printable PDF financial report — summary totals plus
+ * a date-wise transaction table. Deliberately excludes any ride/distance/time
+ * metrics, matching the rest of the app.
+ */
+export function generateReportPdf({
+  userName,
+  startDate,
+  endDate,
+  earnings,
+  petrolEntries,
+  expenses,
+}: GenerateReportPdfInput): jsPDF {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const margin = 40
+  let y = 50
+
+  const summary = buildFinancialSummary(earnings, petrolEntries, expenses)
+  const transactions = buildTransactionList(earnings, petrolEntries, expenses)
+
+  // Header
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(20)
+  doc.setTextColor(INK)
+  doc.text('PROFITGO REPORT', margin, y)
+  y += 26
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(11)
+  doc.setTextColor(MUTED)
+  doc.text(userName, margin, y)
+  y += 16
+  doc.text(`Report Period: ${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}`, margin, y)
+  y += 10
+
+  doc.setDrawColor(226, 232, 240)
+  y += 12
+  doc.line(margin, y, pageWidth - margin, y)
+  y += 26
+
+  // Summary
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.setTextColor(INK)
+  doc.text('SUMMARY', margin, y)
+  y += 20
+
+  const summaryRows: [string, string][] = [
+    ['Total Earnings', formatINRForPdf(summary.totalEarnings)],
+    ['Petrol Expense', formatINRForPdf(summary.totalPetrol)],
+    ['Other Expenses', formatINRForPdf(summary.totalOtherExpenses)],
+    ['Total Expenses', formatINRForPdf(summary.totalExpenses)],
+  ]
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(11)
+  for (const [label, value] of summaryRows) {
+    doc.setTextColor(MUTED)
+    doc.text(label, margin, y)
+    doc.setTextColor(INK)
+    doc.text(value, pageWidth - margin, y, { align: 'right' })
+    y += 18
+  }
+
+  y += 8
+  doc.setFillColor(summary.netProfit >= 0 ? '#f0fdf4' : '#fef2f2')
+  doc.roundedRect(margin, y - 16, pageWidth - margin * 2, 34, 6, 6, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.setTextColor(INK)
+  doc.text('NET PROFIT', margin + 12, y + 6)
+  doc.setTextColor(summary.netProfit >= 0 ? PROFIT : LOSS)
+  doc.text(formatINRForPdf(summary.netProfit), pageWidth - margin - 12, y + 6, { align: 'right' })
+  y += 40
+
+  // Transaction table
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.setTextColor(INK)
+  doc.text('DATE-WISE TRANSACTIONS', margin, y)
+  y += 12
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const autoTableDoc = doc as any
+  autoTableDoc.autoTable({
+    startY: y,
+    margin: { left: margin, right: margin },
+    head: [['Date', 'Type', 'Description', 'Amount']],
+    body: transactions.map((t) => [
+      formatShortDate(t.date),
+      t.type === 'earning' ? 'Earning' : t.type === 'petrol' ? 'Petrol' : 'Expense',
+      t.description,
+      t.type === 'earning' ? formatINRForPdf(t.amount) : `-${formatINRForPdf(t.amount)}`,
+    ]),
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 6 },
+    headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: { 3: { halign: 'right' } },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    didParseCell: (data: any) => {
+      if (data.section === 'body' && data.column.index === 3) {
+        const isEarning = !String(data.cell.raw).startsWith('-')
+        data.cell.styles.textColor = isEarning ? [22, 163, 74] : [220, 38, 38]
+      }
+    },
+  })
+
+  const finalY = autoTableDoc.lastAutoTable?.finalY ?? y + 20
+  let footerY = finalY + 30
+
+  if (footerY > doc.internal.pageSize.getHeight() - 80) {
+    doc.addPage()
+    footerY = 60
+  }
+
+  doc.setDrawColor(226, 232, 240)
+  doc.line(margin, footerY - 16, pageWidth - margin, footerY - 16)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(INK)
+  doc.text(`TOTAL INCOME: ${formatINRForPdf(summary.totalEarnings)}`, margin, footerY)
+  footerY += 16
+  doc.text(`TOTAL EXPENSE: ${formatINRForPdf(summary.totalExpenses)}`, margin, footerY)
+  footerY += 16
+  doc.setTextColor(summary.netProfit >= 0 ? PROFIT : LOSS)
+  doc.text(`NET PROFIT: ${formatINRForPdf(summary.netProfit)}`, margin, footerY)
+
+  return doc
+}
+
+export function downloadReportPdf(input: GenerateReportPdfInput) {
+  const doc = generateReportPdf(input)
+  doc.save(`ProfitGo-Report-${input.startDate}-to-${input.endDate}.pdf`)
+}
+</file>
+
+<file path="src/pages/Login.tsx">
+import { type FormEvent, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { AuthLayout } from '@/layouts/AuthLayout'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { signIn } from '@/services/auth.service'
+
+export function Login() {
+  const navigate = useNavigate()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await signIn(email, password)
+      toast.success('Welcome back!')
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sign in')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <AuthLayout title="ProfitGo" subtitle="Log in to track your earnings">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Input
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        {error && <p className="text-sm font-medium text-loss-600">{error}</p>}
+        <div className="text-right">
+          <Link to="/forgot-password" className="text-sm font-medium text-brand-600">
+            Forgot password?
+          </Link>
+        </div>
+        <Button type="submit" fullWidth loading={loading}>
+          Log In
+        </Button>
+      </form>
+      <p className="mt-6 text-center text-sm text-slate-500">
+        Don&apos;t have an account?{' '}
+        <Link to="/signup" className="font-semibold text-brand-600">
+          Sign up
+        </Link>
+      </p>
+    </AuthLayout>
+  )
+}
+</file>
+
+<file path="src/pages/SignUp.tsx">
+import { type FormEvent, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { AuthLayout } from '@/layouts/AuthLayout'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { signUp } from '@/services/auth.service'
+
+export function SignUp() {
+  const navigate = useNavigate()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const data = await signUp(email, password)
+      if (data.session) {
+        toast.success('Account created!')
+        navigate('/dashboard', { replace: true })
+      } else {
+        toast.success('Check your email to confirm your account')
+        navigate('/login', { replace: true })
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create account')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <AuthLayout title="Create Account" subtitle="Start tracking your profit with ProfitGo">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Input
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          hint="At least 6 characters"
+        />
+        <Input
+          label="Confirm Password"
+          type="password"
+          autoComplete="new-password"
+          required
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+        {error && <p className="text-sm font-medium text-loss-600">{error}</p>}
+        <Button type="submit" fullWidth loading={loading}>
+          Sign Up
+        </Button>
+      </form>
+      <p className="mt-6 text-center text-sm text-slate-500">
+        Already have an account?{' '}
+        <Link to="/login" className="font-semibold text-brand-600">
+          Log in
+        </Link>
+      </p>
+    </AuthLayout>
+  )
+}
+</file>
+
+<file path="src/utils/calculations.test.ts">
+import { describe, expect, it } from 'vitest'
+import {
+  buildBestDayStats,
+  buildDailyBreakdown,
+  buildFinancialSummary,
+  buildTransactionList,
+  calculateAverageDailyEarning,
+  filterEarningsByRange,
+  findBestEarningDay,
+  groupEarningsByDate,
+} from './calculations'
+import { currentMonthRange, resolvePresetRange, todayISO } from './date'
+import type { Earning, Expense, PetrolEntry } from '@/types'
+
+function earning(amount: number, date: string): Earning {
+  return { id: crypto.randomUUID(), user_id: 'u1', amount, date, note: null, created_at: '', updated_at: '' }
+}
+function petrol(amount: number, date: string): PetrolEntry {
+  return {
+    id: crypto.randomUUID(),
+    user_id: 'u1',
+    amount,
+    date,
+    litres: null,
+    price_per_litre: null,
+    petrol_station: null,
+    note: null,
+    created_at: '',
+    updated_at: '',
+  }
+}
+function expense(amount: number, category: string, date: string): Expense {
+  return { id: crypto.randomUUID(), user_id: 'u1', amount, category, date, note: null, created_at: '', updated_at: '' }
+}
+
+describe('buildFinancialSummary', () => {
+  it('matches the spec sample data exactly', () => {
+    const earnings = [earning(500, '2026-09-01'), earning(750, '2026-09-02'), earning(900, '2026-09-03')]
+    const petrolEntries = [petrol(200, '2026-09-01'), petrol(250, '2026-09-02'), petrol(300, '2026-09-03')]
+    const expenses = [expense(100, 'Food', '2026-09-01'), expense(80, 'Parking', '2026-09-02')]
+
+    const summary = buildFinancialSummary(earnings, petrolEntries, expenses)
+
+    expect(summary.totalEarnings).toBe(2150)
+    expect(summary.totalPetrol).toBe(750)
+    expect(summary.totalOtherExpenses).toBe(180)
+    expect(summary.totalExpenses).toBe(930)
+    expect(summary.netProfit).toBe(1220)
+    expect(summary.status).toBe('PROFIT')
+    expect(summary.earningCount).toBe(3)
+    expect(summary.petrolCount).toBe(3)
+    expect(summary.expenseCount).toBe(2)
+  })
+
+  it('reports LOSS when expenses exceed earnings', () => {
+    const summary = buildFinancialSummary([earning(100, '2026-09-01')], [petrol(150, '2026-09-01')], [])
+    expect(summary.netProfit).toBe(-50)
+    expect(summary.status).toBe('LOSS')
+  })
+
+  it('reports BREAK EVEN when profit is exactly zero', () => {
+    const summary = buildFinancialSummary([earning(100, '2026-09-01')], [petrol(100, '2026-09-01')], [])
+    expect(summary.netProfit).toBe(0)
+    expect(summary.status).toBe('BREAK EVEN')
+  })
+
+  it('handles empty data without errors', () => {
+    const summary = buildFinancialSummary([], [], [])
+    expect(summary.totalEarnings).toBe(0)
+    expect(summary.netProfit).toBe(0)
+    expect(summary.status).toBe('BREAK EVEN')
+  })
+})
+
+describe('buildDailyBreakdown', () => {
+  it('fills every date in range, including days with no transactions', () => {
+    const earnings = [earning(500, '2026-09-01'), earning(900, '2026-09-03')]
+    const breakdown = buildDailyBreakdown(earnings, [], [], '2026-09-01', '2026-09-03')
+
+    expect(breakdown).toHaveLength(3)
+    expect(breakdown[0]).toMatchObject({ date: '2026-09-01', earnings: 500, profit: 500 })
+    expect(breakdown[1]).toMatchObject({ date: '2026-09-02', earnings: 0, profit: 0 })
+    expect(breakdown[2]).toMatchObject({ date: '2026-09-03', earnings: 900, profit: 900 })
+  })
+})
+
+describe('buildTransactionList', () => {
+  it('merges and sorts all transaction types newest-first', () => {
+    const list = buildTransactionList(
+      [earning(500, '2026-09-01')],
+      [petrol(200, '2026-09-03')],
+      [expense(80, 'Food', '2026-09-02')],
+    )
+    expect(list.map((t) => t.date)).toEqual(['2026-09-03', '2026-09-02', '2026-09-01'])
+    expect(list.map((t) => t.type)).toEqual(['petrol', 'expense', 'earning'])
+  })
+})
+
+describe('groupEarningsByDate', () => {
+  it('combines multiple earnings on the same date into a single total', () => {
+    const byDate = groupEarningsByDate([
+      earning(500, '2026-09-10'),
+      earning(700, '2026-09-10'),
+      earning(300, '2026-09-10'),
+    ])
+    expect(byDate.get('2026-09-10')).toBe(1500)
+    expect(byDate.size).toBe(1)
+  })
+})
+
+describe('findBestEarningDay', () => {
+  it('picks the date with the highest combined total', () => {
+    const best = findBestEarningDay([
+      earning(500, '2026-09-01'),
+      earning(700, '2026-09-01'),
+      earning(300, '2026-09-01'), // 2026-09-01 = 1500
+      earning(900, '2026-09-02'),
+    ])
+    expect(best).toEqual({ date: '2026-09-01', amount: 1500 })
+  })
+
+  it('breaks a tie by choosing the most recent date', () => {
+    const best = findBestEarningDay([earning(1000, '2026-09-01'), earning(1000, '2026-09-05')])
+    expect(best).toEqual({ date: '2026-09-05', amount: 1000 })
+  })
+
+  it('handles a single earning day', () => {
+    expect(findBestEarningDay([earning(750, '2026-09-01')])).toEqual({ date: '2026-09-01', amount: 750 })
+  })
+
+  it('returns null when there are no earnings', () => {
+    expect(findBestEarningDay([])).toBeNull()
+  })
+})
+
+describe('calculateAverageDailyEarning', () => {
+  it('divides by unique earning days, not calendar days', () => {
+    // 8 distinct dates totalling 10,000 -> 1,250/day, even though one day has multiple entries
+    const earnings = [
+      earning(1800, '2026-09-01'),
+      earning(1200, '2026-09-01'), // same day as above, combines to 3000
+      earning(1000, '2026-09-02'),
+      earning(1000, '2026-09-03'),
+      earning(1000, '2026-09-04'),
+      earning(1000, '2026-09-05'),
+      earning(1000, '2026-09-06'),
+      earning(1000, '2026-09-07'),
+      earning(1000, '2026-09-08'), // 8th unique date
+    ]
+    expect(calculateAverageDailyEarning(earnings)).toBe(1250)
+  })
+
+  it('returns null when there are no earnings', () => {
+    expect(calculateAverageDailyEarning([])).toBeNull()
+  })
+
+  it('returns the single day amount when there is only one earning day', () => {
+    expect(calculateAverageDailyEarning([earning(500, '2026-09-01'), earning(250, '2026-09-01')])).toBe(750)
+  })
+})
+
+describe('buildBestDayStats', () => {
+  it('combines best day and average into one result', () => {
+    const stats = buildBestDayStats([
+      earning(500, '2026-09-01'),
+      earning(700, '2026-09-01'),
+      earning(300, '2026-09-01'),
+      earning(900, '2026-09-02'),
+    ])
+    expect(stats.bestDay).toEqual({ date: '2026-09-01', amount: 1500 })
+    expect(stats.totalEarnings).toBe(2400)
+    expect(stats.activeDays).toBe(2)
+    expect(stats.averageDailyEarning).toBe(1200)
+  })
+
+  it('returns an empty-state-friendly result when there are no earnings', () => {
+    const stats = buildBestDayStats([])
+    expect(stats).toEqual({ bestDay: null, averageDailyEarning: null, activeDays: 0, totalEarnings: 0 })
+  })
+
+  it('all-time totals are unaffected by earnings outside the current week/month', () => {
+    // Two-year-old earning plus a today-dated one — all-time must see both regardless of period.
+    const allTime = buildBestDayStats([earning(2000, '2024-01-15'), earning(500, todayISO())])
+    expect(allTime.activeDays).toBe(2)
+    expect(allTime.totalEarnings).toBe(2500)
+    expect(allTime.bestDay).toEqual({ date: '2024-01-15', amount: 2000 })
+  })
+})
+
+describe('period scoping (This Week / This Month) via filterEarningsByRange', () => {
+  it('This Week stats only include earnings inside the current week, even across a month boundary', () => {
+    const { start, end } = resolvePresetRange('week')
+    const insideWeek = earning(400, start)
+    const outsideWeek = earning(999999, '2000-01-01') // far outside any current week
+    const stats = buildBestDayStats(filterEarningsByRange([insideWeek, outsideWeek], start, end))
+    expect(stats.totalEarnings).toBe(400)
+    expect(stats.bestDay?.date).toBe(start)
+  })
+
+  it('This Month stats only include earnings inside the current month', () => {
+    const { start, end } = currentMonthRange()
+    const insideMonth = earning(600, todayISO())
+    const outsideMonth = earning(999999, '2000-01-01')
+    const stats = buildBestDayStats(filterEarningsByRange([insideMonth, outsideMonth], start, end))
+    expect(stats.totalEarnings).toBe(600)
+    expect(stats.activeDays).toBe(1)
+  })
+
+  it('an earning that falls outside the requested range is excluded entirely', () => {
+    const filtered = filterEarningsByRange(
+      [earning(100, '2026-01-01'), earning(200, '2026-02-15'), earning(300, '2026-03-01')],
+      '2026-02-01',
+      '2026-02-28',
+    )
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].date).toBe('2026-02-15')
+  })
+})
+</file>
+
+<file path="src/utils/calculations.ts">
+import type {
+  BestDayStats,
+  DailyBreakdownPoint,
+  Earning,
+  EarningDay,
+  Expense,
+  FinancialSummary,
+  PetrolEntry,
+  Transaction,
+} from '@/types'
+import { eachDateInRange } from './date'
+
+/**
+ * Single source of truth for every financial formula in the app.
+ * Nothing else should re-derive totals, expenses, or profit/loss status.
+ */
+
+export function sumAmounts(items: { amount: number }[]): number {
+  return items.reduce((total, item) => total + item.amount, 0)
+}
+
+export function calculateTotalExpenses(totalPetrol: number, totalOtherExpenses: number): number {
+  return totalPetrol + totalOtherExpenses
+}
+
+export function calculateNetProfit(totalEarnings: number, totalExpenses: number): number {
+  return totalEarnings - totalExpenses
+}
+
+export function profitStatus(netProfit: number): FinancialSummary['status'] {
+  if (netProfit > 0) return 'PROFIT'
+  if (netProfit < 0) return 'LOSS'
+  return 'BREAK EVEN'
+}
+
+export function buildFinancialSummary(
+  earnings: Earning[],
+  petrolEntries: PetrolEntry[],
+  expenses: Expense[],
+): FinancialSummary {
+  const totalEarnings = sumAmounts(earnings)
+  const totalPetrol = sumAmounts(petrolEntries)
+  const totalOtherExpenses = sumAmounts(expenses)
+  const totalExpenses = calculateTotalExpenses(totalPetrol, totalOtherExpenses)
+  const netProfit = calculateNetProfit(totalEarnings, totalExpenses)
+
+  return {
+    totalEarnings,
+    totalPetrol,
+    totalOtherExpenses,
+    totalExpenses,
+    netProfit,
+    status: profitStatus(netProfit),
+    earningCount: earnings.length,
+    petrolCount: petrolEntries.length,
+    expenseCount: expenses.length,
+  }
+}
+
+/** Builds a per-day breakdown across a date range, filling gaps with zeroes so charts stay continuous. */
+export function buildDailyBreakdown(
+  earnings: Earning[],
+  petrolEntries: PetrolEntry[],
+  expenses: Expense[],
+  start: string,
+  end: string,
+): DailyBreakdownPoint[] {
+  const byDate = new Map<string, DailyBreakdownPoint>()
+  for (const date of eachDateInRange(start, end)) {
+    byDate.set(date, { date, earnings: 0, petrol: 0, otherExpenses: 0, expenses: 0, profit: 0 })
+  }
+
+  for (const e of earnings) {
+    const point = byDate.get(e.date)
+    if (point) point.earnings += e.amount
+  }
+  for (const p of petrolEntries) {
+    const point = byDate.get(p.date)
+    if (point) point.petrol += p.amount
+  }
+  for (const x of expenses) {
+    const point = byDate.get(x.date)
+    if (point) point.otherExpenses += x.amount
+  }
+
+  for (const point of byDate.values()) {
+    point.expenses = calculateTotalExpenses(point.petrol, point.otherExpenses)
+    point.profit = calculateNetProfit(point.earnings, point.expenses)
+  }
+
+  return Array.from(byDate.values())
+}
+
+/** Merges the three transaction sources into a single unified, newest-first list. */
+export function buildTransactionList(
+  earnings: Earning[],
+  petrolEntries: PetrolEntry[],
+  expenses: Expense[],
+): Transaction[] {
+  const transactions: Transaction[] = [
+    ...earnings.map(
+      (e): Transaction => ({
+        id: e.id,
+        type: 'earning',
+        date: e.date,
+        description: 'Rapido Earning',
+        amount: e.amount,
+        note: e.note,
+        raw: e,
+      }),
+    ),
+    ...petrolEntries.map(
+      (p): Transaction => ({
+        id: p.id,
+        type: 'petrol',
+        date: p.date,
+        description: p.petrol_station?.trim() || 'Petrol',
+        amount: p.amount,
+        note: p.note,
+        raw: p,
+      }),
+    ),
+    ...expenses.map(
+      (x): Transaction => ({
+        id: x.id,
+        type: 'expense',
+        date: x.date,
+        description: x.category,
+        amount: x.amount,
+        category: x.category,
+        note: x.note,
+        raw: x,
+      }),
+    ),
+  ]
+
+  return transactions.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1
+    return 0
+  })
+}
+
+/** Keeps only earnings whose date falls within [start, end] inclusive (YYYY-MM-DD comparison). */
+export function filterEarningsByRange(earnings: Earning[], start: string, end: string): Earning[] {
+  return earnings.filter((e) => e.date >= start && e.date <= end)
+}
+
+/** Sums earnings onto each date they fall on — multiple entries on one date combine into a single total. */
+export function groupEarningsByDate(earnings: Earning[]): Map<string, number> {
+  const byDate = new Map<string, number>()
+  for (const e of earnings) {
+    byDate.set(e.date, (byDate.get(e.date) ?? 0) + e.amount)
+  }
+  return byDate
+}
+
+/**
+ * The single highest-earning day (same-date entries combined first).
+ * Ties resolve to the most recent date. Null when there are no earnings.
+ */
+export function findBestEarningDay(earnings: Earning[]): EarningDay | null {
+  const byDate = groupEarningsByDate(earnings)
+  let best: EarningDay | null = null
+  for (const [date, amount] of byDate) {
+    if (!best || amount > best.amount || (amount === best.amount && date > best.date)) {
+      best = { date, amount }
+    }
+  }
+  return best
+}
+
+/**
+ * Total earnings ÷ number of unique days that have at least one earning —
+ * never divides by calendar days. Null when there are no earnings.
+ */
+export function calculateAverageDailyEarning(earnings: Earning[]): number | null {
+  const byDate = groupEarningsByDate(earnings)
+  if (byDate.size === 0) return null
+  const total = Array.from(byDate.values()).reduce((sum, amount) => sum + amount, 0)
+  return total / byDate.size
+}
+
+/** Combines best-day and average-daily-earning stats for one period (all time / this week / this month). */
+export function buildBestDayStats(earnings: Earning[]): BestDayStats {
+  const byDate = groupEarningsByDate(earnings)
+  const activeDays = byDate.size
+  const totalEarnings = Array.from(byDate.values()).reduce((sum, amount) => sum + amount, 0)
+
+  return {
+    bestDay: findBestEarningDay(earnings),
+    averageDailyEarning: activeDays === 0 ? null : totalEarnings / activeDays,
+    activeDays,
+    totalEarnings,
+  }
+}
+</file>
+
+<file path="index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ProfitGo</title>
+    <meta name="description" content="Your Daily Earnings & Expense Tracker" />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="ProfitGo" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="package.json">
+{
+  "name": "profitgo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "clsx": "^2.1.1",
+    "date-fns": "^3.6.0",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
+    "lucide-react": "^0.454.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.28.0",
+    "recharts": "^2.13.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.4.20",
+    "oxlint": "^1.81.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^2.1.4"
+  }
+}
+</file>
+
+<file path="README.md">
+# ProfitGo
+
+Your Daily Earnings & Expense Tracker — a simple, mobile-first financial tracker for
+Rapido drivers. Tracks earnings, petrol expenses, and other expenses — and nothing
+else. No kilometres, ride counts, driving time, or ride duration anywhere in the app,
+by design.
+
+## Tech Stack
+
+- React 19 + Vite + TypeScript
+- Tailwind CSS
+- Supabase (Auth + Postgres + Storage, with Row Level Security)
+- Recharts (charts)
+- Lucide React (icons)
+- jsPDF + jspdf-autotable (client-side PDF report generation)
+- React Router, react-hot-toast
+
+## Project Structure
+
+```
+src/
+  components/    Reusable UI: dashboard cards/charts, transaction list, forms,
+                 navigation, profile widgets, auth guard, generic ui/ primitives
+  pages/         One component per route (Dashboard, Add, History, Reports, Profile,
+                 Login, SignUp, ForgotPassword, ResetPassword)
+  layouts/       AppLayout (sidebar + bottom nav shell), AuthLayout
+  context/       AuthContext (Supabase session state)
+  hooks/         useFinancialData, useProfile — centralized data fetching
+  services/      Supabase queries, one file per table (earnings/petrol/expenses/
+                 profile/auth), fully typed CRUD functions
+  lib/           supabase client, PDF report generator
+  utils/         calculations.ts (single source of truth for every financial
+                 formula), currency.ts, date.ts, validation.ts
+  types/         Shared TypeScript types
+supabase/
+  schema.sql     Full DB schema, indexes, RLS policies, storage buckets
+  seed.sql       Optional sample data matching the spec's worked example
+```
+
+## Local Setup
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Create a Supabase project
+
+Go to [supabase.com](https://supabase.com), create a new project, then open
+**SQL Editor** and run the contents of [`supabase/schema.sql`](supabase/schema.sql).
+This creates the `profiles`, `earnings`, `petrol_entries`, and `expenses` tables,
+all indexes, Row Level Security policies (every user can only read/write their own
+rows), and the `avatars` / `qr-codes` storage buckets with owner-scoped policies.
+
+### 3. Configure environment variables
+
+Copy `.env.example` to `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Then open **Supabase Dashboard → Project Settings → API** and paste in:
+
+```
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+```
+
+Only the public **anon** key is ever used client-side — the service-role key is
+never referenced anywhere in this codebase. Row Level Security is what actually
+protects each user's data.
+
+If `.env` is missing or empty, the app boots into a clear "Supabase setup required"
+screen instead of crashing, so you'll always know what's missing.
+
+### 4. (Optional) Load sample data
+
+Sign up once through the app, find your user id under
+**Supabase Dashboard → Authentication → Users**, paste it into
+[`supabase/seed.sql`](supabase/seed.sql) in place of `YOUR_USER_ID`, and run it in
+the SQL Editor. It seeds the exact worked example from the spec (₹2,150 earnings,
+₹750 petrol, ₹180 other expenses → ₹1,220 net profit), which is also covered by the
+automated test in `src/utils/calculations.test.ts`.
+
+### 5. Run the dev server
+
+```bash
+npm run dev
+```
+
+Open the printed local URL, sign up, and start adding transactions.
+
+## Other Commands
+
+```bash
+npm run build     # type-check (tsc -b) + production build to dist/
+npm run preview   # preview the production build locally
+npm run lint       # oxlint
+npm test           # vitest — calculation/formula correctness tests
+```
+
+## Deploying to Vercel
+
+1. Push this project to a Git repository.
+2. Import it in Vercel (framework preset: Vite is auto-detected).
+3. Add the two environment variables from step 3 above in
+   **Vercel → Project Settings → Environment Variables**.
+4. Deploy. `vercel.json` is already set up to rewrite all routes to `index.html`
+   so client-side routing (React Router) works correctly on refresh/deep links.
+
+## Notes on Scope (v1)
+
+- UPI QR code and UPI ID are stored and displayed for manual payment collection.
+  There is no automatic bank/UPI transaction import — earnings are always entered
+  manually. The `services/` layer is structured so a future payment-provider API
+  integration could plug in without touching UI code.
+- Custom expense categories are currently stored per-browser (`localStorage`);
+  the default categories (Food, Bike Maintenance, Puncture, Parking, Service,
+  Other) live in `src/types/index.ts`.
+</file>
+
+<file path="vite.config.ts">
+import path from 'node:path'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.svg', 'favicon-32.png', 'apple-touch-icon.png'],
+      manifest: {
+        name: 'ProfitGo',
+        short_name: 'ProfitGo',
+        description: 'Your Daily Earnings & Expense Tracker',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#f8fafc',
+        theme_color: '#4f46e5',
+        icons: [
+          {
+            src: '/icons/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/icons/maskable-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: '/icons/maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // Adds push/notificationclick listeners to the generated sw.js without
+        // touching its Workbox-managed precaching/update logic — see the file
+        // itself for details.
+        importScripts: ['push-sw.js'],
+      },
+    }),
+  ],
+  resolve: {
+    alias: {
+      '@': path.resolve(import.meta.dirname, './src'),
+    },
+  },
+})
+</file>
+
+<file path="src/pages/Dashboard.tsx">
+import { useMemo } from 'react'
+import { Wallet, Fuel, ReceiptText, TrendingUp, Trophy, Calendar, CalendarDays } from 'lucide-react'
+import { useFinancialData } from '@/hooks/useFinancialData'
+import { useProfile } from '@/hooks/useProfile'
+import { useAuth } from '@/context/AuthContext'
+import { StatCard } from '@/components/dashboard/StatCard'
+import { ProfitStatusBanner } from '@/components/dashboard/ProfitStatusBanner'
+import { DailyEarningsChart } from '@/components/dashboard/DailyEarningsChart'
+import { DailyPetrolChart } from '@/components/dashboard/DailyPetrolChart'
+import { DailyProfitChart } from '@/components/dashboard/DailyProfitChart'
+import { EarningsVsExpensesChart } from '@/components/dashboard/EarningsVsExpensesChart'
+import { BestDayCard } from '@/components/dashboard/BestDayCard'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { ErrorState } from '@/components/ui/ErrorState'
+import { buildBestDayStats, buildDailyBreakdown, buildFinancialSummary, filterEarningsByRange } from '@/utils/calculations'
+import { currentMonthRange, resolvePresetRange, timeOfDayGreeting, todayISO } from '@/utils/date'
+
+export function Dashboard() {
+  const { user } = useAuth()
+  const { profile } = useProfile()
+  const { start, end } = currentMonthRange()
+  const { earnings, petrolEntries, expenses, loading, error, refresh } = useFinancialData(start, end)
+  const fullDisplayName = profile?.name?.trim() || user?.email?.split('@')[0] || 'Driver'
+  const displayName = fullDisplayName.split(/\s+/)[0]
+
+  // All-time earnings, used only for the Best Day & Average Earning section below —
+  // fetched separately from the month-scoped data above so that section can look back
+  // further than the current month (petrol/expenses from this call are unused).
+  const {
+    earnings: allEarnings,
+    loading: bestDayLoading,
+    error: bestDayError,
+    refresh: refreshBestDay,
+  } = useFinancialData()
+
+  const today = todayISO()
+  const weekRange = resolvePresetRange('week')
+
+  const allTimeBestDayStats = useMemo(() => buildBestDayStats(allEarnings), [allEarnings])
+  const weekBestDayStats = useMemo(
+    () => buildBestDayStats(filterEarningsByRange(allEarnings, weekRange.start, weekRange.end)),
+    [allEarnings, weekRange.start, weekRange.end],
+  )
+  const monthBestDayStats = useMemo(
+    () => buildBestDayStats(filterEarningsByRange(allEarnings, start, end)),
+    [allEarnings, start, end],
+  )
+
+  const todaySummary = useMemo(
+    () =>
+      buildFinancialSummary(
+        earnings.filter((e) => e.date === today),
+        petrolEntries.filter((p) => p.date === today),
+        expenses.filter((x) => x.date === today),
+      ),
+    [earnings, petrolEntries, expenses, today],
+  )
+
+  const monthSummary = useMemo(
+    () => buildFinancialSummary(earnings, petrolEntries, expenses),
+    [earnings, petrolEntries, expenses],
+  )
+
+  const dailyBreakdown = useMemo(
+    () => buildDailyBreakdown(earnings, petrolEntries, expenses, start, end),
+    [earnings, petrolEntries, expenses, start, end],
+  )
+
+  if (loading) return <LoadingSpinner label="Loading your dashboard..." />
+  if (error) return <ErrorState message={error} onRetry={refresh} />
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">
+          {timeOfDayGreeting()}, {displayName}
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">Track your money, know your profit</p>
+      </div>
+
+      <ProfitStatusBanner netProfit={monthSummary.netProfit} status={monthSummary.status} periodLabel="This Month" />
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Today</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Today's Earnings" amount={todaySummary.totalEarnings} icon={Wallet} tone="positive" />
+          <StatCard label="Today's Petrol" amount={todaySummary.totalPetrol} icon={Fuel} tone="negative" />
+          <StatCard label="Other Expenses" amount={todaySummary.totalOtherExpenses} icon={ReceiptText} tone="negative" />
+          <StatCard
+            label="Today's Net Profit"
+            amount={todaySummary.netProfit}
+            icon={TrendingUp}
+            tone={todaySummary.netProfit >= 0 ? 'positive' : 'negative'}
+          />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">This Month</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Total Earnings" amount={monthSummary.totalEarnings} icon={Wallet} tone="positive" />
+          <StatCard label="Total Petrol" amount={monthSummary.totalPetrol} icon={Fuel} tone="negative" />
+          <StatCard label="Other Expenses" amount={monthSummary.totalOtherExpenses} icon={ReceiptText} tone="negative" />
+          <StatCard label="Total Expenses" amount={monthSummary.totalExpenses} icon={ReceiptText} tone="negative" />
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">This Month's Trends</h2>
+        <DailyEarningsChart data={dailyBreakdown} />
+        <DailyPetrolChart data={dailyBreakdown} />
+        <DailyProfitChart data={dailyBreakdown} />
+        <EarningsVsExpensesChart data={dailyBreakdown} />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Best Day & Average Earning
+        </h2>
+        {bestDayLoading ? (
+          <LoadingSpinner label="Loading earning history..." />
+        ) : bestDayError ? (
+          <ErrorState message={bestDayError} onRetry={refreshBestDay} />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <BestDayCard title="All Time" icon={Trophy} stats={allTimeBestDayStats} emptyMessage="No earnings yet" />
+            <BestDayCard title="This Week" icon={Calendar} stats={weekBestDayStats} emptyMessage="No earnings this week" />
+            <BestDayCard
+              title="This Month"
+              icon={CalendarDays}
+              stats={monthBestDayStats}
+              emptyMessage="No earnings this month"
+            />
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+</file>
+
+<file path="src/types/index.ts">
+/**
+ * Core domain types for ProfitGo.
+ * Intentionally excludes any ride/distance/time metrics — this app tracks
+ * money only (earnings, petrol, other expenses).
+ */
+
+export type TransactionType = 'earning' | 'petrol' | 'expense'
+
+export interface Earning {
+  id: string
+  user_id: string
+  amount: number
+  date: string // ISO date string (YYYY-MM-DD)
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PetrolEntry {
+  id: string
+  user_id: string
+  amount: number
+  date: string
+  litres: number | null
+  price_per_litre: number | null
+  petrol_station: string | null
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export const EXPENSE_CATEGORIES = [
+  'Food',
+  'Bike Maintenance',
+  'Puncture',
+  'Parking',
+  'Service',
+  'Other',
+] as const
+
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number] | string
+
+export interface Expense {
+  id: string
+  user_id: string
+  amount: number
+  category: ExpenseCategory
+  date: string
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Profile {
+  id: string
+  user_id: string
+  name: string | null
+  mobile: string | null
+  upi_id: string | null
+  qr_image_url: string | null
+  avatar_url: string | null
+  /** Whether the user wants the daily 10 PM "add today's earnings" push reminder. */
+  daily_reminder_enabled: boolean
+  /** IANA timezone (e.g. "Asia/Kolkata") the daily reminder is scheduled against. Defaults server-side to Asia/Kolkata. */
+  timezone: string
+  /** Local date (YYYY-MM-DD, in `timezone`) the reminder was last sent — prevents duplicate sends on the same day. */
+  last_reminder_sent_date: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** One browser/device's Web Push subscription, owned by exactly one user. */
+export interface PushSubscriptionRow {
+  id: string
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth_key: string
+  user_agent: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** A unified shape used for history lists and PDF reports. */
+export interface Transaction {
+  id: string
+  type: TransactionType
+  date: string
+  description: string
+  amount: number // positive for earnings, positive magnitude for petrol/expense (sign applied at render time)
+  category?: string | null
+  note?: string | null
+  /** The original record, kept for edit/delete actions in the History page. */
+  raw: Earning | PetrolEntry | Expense
+}
+
+export interface FinancialSummary {
+  totalEarnings: number
+  totalPetrol: number
+  totalOtherExpenses: number
+  totalExpenses: number
+  netProfit: number
+  status: 'PROFIT' | 'LOSS' | 'BREAK EVEN'
+  earningCount: number
+  petrolCount: number
+  expenseCount: number
+}
+
+export interface DailyBreakdownPoint {
+  date: string
+  earnings: number
+  petrol: number
+  otherExpenses: number
+  expenses: number
+  profit: number
+}
+
+/** A single day's combined earning total, used for best-day/average calculations. */
+export interface EarningDay {
+  date: string
+  amount: number
+}
+
+/** Earnings-only performance stats for a period (all time / this week / this month). */
+export interface BestDayStats {
+  /** Highest-earning day in the period, or null if there are no earnings. Ties resolve to the most recent date. */
+  bestDay: EarningDay | null
+  /** Total earnings ÷ number of unique days with at least one earning. Null if there are no earnings. */
+  averageDailyEarning: number | null
+  /** Number of unique calendar dates with at least one earning in the period. */
+  activeDays: number
+  totalEarnings: number
+}
+</file>
+
+</files>

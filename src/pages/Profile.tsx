@@ -8,6 +8,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ImageUploadField } from '@/components/profile/ImageUploadField'
 import { QRDisplay } from '@/components/profile/QRDisplay'
 import { ProfileForm } from '@/components/profile/ProfileForm'
+import { NotificationSettings } from '@/components/profile/NotificationSettings'
 import { upsertProfile, uploadAvatarImage, uploadQrImage } from '@/services/profile.service'
 import { signOut } from '@/services/auth.service'
 
@@ -50,6 +51,8 @@ export function Profile() {
           <ProfileForm profile={profile} onSave={handleSaveProfile} />
         </div>
       </Card>
+
+      <NotificationSettings profile={profile} onChange={refresh} />
 
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">UPI QR Code</h2>

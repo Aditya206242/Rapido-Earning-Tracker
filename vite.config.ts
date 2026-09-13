@@ -48,6 +48,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // Adds push/notificationclick listeners to the generated sw.js without
+        // touching its Workbox-managed precaching/update logic — see the file
+        // itself for details.
+        importScripts: ['push-sw.js'],
       },
     }),
   ],

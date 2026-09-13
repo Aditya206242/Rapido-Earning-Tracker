@@ -1,5 +1,5 @@
 -- =====================================================================
--- Rapido Profit Tracker — Supabase schema
+-- ProfitGo — Supabase schema
 -- Run this in: Supabase Dashboard -> SQL Editor -> New Query -> Run
 -- Safe to re-run: uses IF NOT EXISTS / CREATE OR REPLACE where possible.
 -- =====================================================================
@@ -17,11 +17,23 @@ create table if not exists public.profiles (
   upi_id text,
   qr_image_url text,
   avatar_url text,
+  daily_reminder_enabled boolean not null default false,
+  timezone text not null default 'Asia/Kolkata',
+  last_reminder_sent_date date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+-- Columns added after the table's initial release — safe no-ops on a fresh create above.
+alter table public.profiles add column if not exists daily_reminder_enabled boolean not null default false;
+alter table public.profiles add column if not exists timezone text not null default 'Asia/Kolkata';
+alter table public.profiles add column if not exists last_reminder_sent_date date;
+
 create index if not exists idx_profiles_user_id on public.profiles (user_id);
+-- Used by the daily-reminders Edge Function to cheaply find everyone who might be due.
+create index if not exists idx_profiles_daily_reminder_enabled
+  on public.profiles (daily_reminder_enabled)
+  where daily_reminder_enabled = true;
 
 -- ---------------------------------------------------------------------
 -- Table: earnings
@@ -76,6 +88,27 @@ create index if not exists idx_expenses_user_id on public.expenses (user_id);
 create index if not exists idx_expenses_user_date on public.expenses (user_id, date desc);
 
 -- ---------------------------------------------------------------------
+-- Table: push_subscriptions
+-- One row per browser/device a user has enabled push notifications on.
+-- Written by the client (via the authenticated anon key + RLS below);
+-- read only by the send-daily-reminders Edge Function using the
+-- service-role key, which bypasses RLS entirely and never runs client-side.
+-- ---------------------------------------------------------------------
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  endpoint text not null,
+  p256dh text not null,
+  auth_key text not null,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, endpoint)
+);
+
+create index if not exists idx_push_subscriptions_user_id on public.push_subscriptions (user_id);
+
+-- ---------------------------------------------------------------------
 -- updated_at auto-touch trigger
 -- ---------------------------------------------------------------------
 create or replace function public.set_updated_at()
@@ -102,6 +135,10 @@ drop trigger if exists set_updated_at on public.expenses;
 create trigger set_updated_at before update on public.expenses
   for each row execute function public.set_updated_at();
 
+drop trigger if exists set_updated_at on public.push_subscriptions;
+create trigger set_updated_at before update on public.push_subscriptions
+  for each row execute function public.set_updated_at();
+
 -- =====================================================================
 -- Row Level Security
 -- Every table: a user may only SELECT / INSERT / UPDATE / DELETE rows
@@ -112,6 +149,7 @@ alter table public.profiles enable row level security;
 alter table public.earnings enable row level security;
 alter table public.petrol_entries enable row level security;
 alter table public.expenses enable row level security;
+alter table public.push_subscriptions enable row level security;
 
 -- profiles policies
 drop policy if exists "profiles_select_own" on public.profiles;
@@ -179,6 +217,26 @@ create policy "expenses_update_own" on public.expenses
 
 drop policy if exists "expenses_delete_own" on public.expenses;
 create policy "expenses_delete_own" on public.expenses
+  for delete using (auth.uid() = user_id);
+
+-- push_subscriptions policies
+-- Note: the send-daily-reminders Edge Function reads this table with the
+-- service_role key, which bypasses RLS entirely — these policies only
+-- govern what the browser (anon key + logged-in user) can do.
+drop policy if exists "push_subscriptions_select_own" on public.push_subscriptions;
+create policy "push_subscriptions_select_own" on public.push_subscriptions
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_insert_own" on public.push_subscriptions;
+create policy "push_subscriptions_insert_own" on public.push_subscriptions
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_update_own" on public.push_subscriptions;
+create policy "push_subscriptions_update_own" on public.push_subscriptions
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "push_subscriptions_delete_own" on public.push_subscriptions;
+create policy "push_subscriptions_delete_own" on public.push_subscriptions
   for delete using (auth.uid() = user_id);
 
 -- =====================================================================
