@@ -103,7 +103,7 @@ export function buildTransactionList(
         id: e.id,
         type: 'earning',
         date: e.date,
-        description: 'Rapido Earning',
+        description: ' Earning',
         amount: e.amount,
         note: e.note,
         raw: e,
