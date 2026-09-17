@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { BottomNav } from '@/components/navigation/BottomNav'
 import { Sidebar } from '@/components/navigation/Sidebar'
+import { CoachButton } from '@/components/coach/CoachButton'
 
 export function AppLayout() {
   return (
@@ -10,6 +11,7 @@ export function AppLayout() {
         <Outlet />
       </main>
       <BottomNav />
+      <CoachButton />
     </div>
   )
 }

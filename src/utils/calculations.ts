@@ -180,6 +180,22 @@ export function calculateAverageDailyEarning(earnings: Earning[]): number | null
   return total / byDate.size
 }
 
+export interface CategoryTotal {
+  category: string
+  amount: number
+}
+
+/** Sums expenses onto each category, sorted highest amount first. */
+export function groupExpensesByCategory(expenses: Expense[]): CategoryTotal[] {
+  const byCategory = new Map<string, number>()
+  for (const x of expenses) {
+    byCategory.set(x.category, (byCategory.get(x.category) ?? 0) + x.amount)
+  }
+  return Array.from(byCategory.entries())
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((a, b) => b.amount - a.amount)
+}
+
 /** Combines best-day and average-daily-earning stats for one period (all time / this week / this month). */
 export function buildBestDayStats(earnings: Earning[]): BestDayStats {
   const byDate = groupEarningsByDate(earnings)
